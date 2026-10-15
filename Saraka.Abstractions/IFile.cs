@@ -14,18 +14,22 @@ namespace Saraka.Abstractions
         /// Gets the size of the file, in bytes.
         /// </summary>
         /// <param name="cancellationToken">A token to cancel the operation.</param>
+        /// <exception cref="FileNotFoundException">This file no longer exists.</exception>
         Task<long> GetLengthAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Reads the entire contents of the file.
         /// </summary>
         /// <param name="cancellationToken">A token to cancel the operation.</param>
+        /// <exception cref="FileNotFoundException">This file no longer exists.</exception>
         Task<byte[]> ReadAllBytesAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// Reads the entire contents of the file as UTF-8 text.
+        /// Reads the entire contents of the file as UTF-8 text. A leading UTF-8 byte order mark is
+        /// skipped.
         /// </summary>
         /// <param name="cancellationToken">A token to cancel the operation.</param>
+        /// <exception cref="FileNotFoundException">This file no longer exists.</exception>
         Task<string> ReadAllTextAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
@@ -33,6 +37,7 @@ namespace Saraka.Abstractions
         /// disposing the stream.
         /// </summary>
         /// <param name="cancellationToken">A token to cancel the operation.</param>
+        /// <exception cref="FileNotFoundException">This file no longer exists.</exception>
         Task<Stream> OpenReadAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
@@ -41,6 +46,7 @@ namespace Saraka.Abstractions
         /// </summary>
         /// <param name="cancellationToken">A token to cancel the operation.</param>
         /// <exception cref="InvalidOperationException">The file system is not writable.</exception>
+        /// <exception cref="FileNotFoundException">This file no longer exists.</exception>
         Task<Stream> OpenWriteAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
@@ -48,6 +54,7 @@ namespace Saraka.Abstractions
         /// </summary>
         /// <param name="cancellationToken">A token to cancel the operation.</param>
         /// <exception cref="InvalidOperationException">The file system is not writable.</exception>
+        /// <exception cref="FileNotFoundException">This file no longer exists.</exception>
         Task DeleteAsync(CancellationToken cancellationToken = default);
     }
 }
