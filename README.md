@@ -4,7 +4,7 @@ Saraka provides a small set of async interfaces for browsing and editing a file 
 
 The `Saraka.Abstractions` package defines the interfaces only. Implementations decide what the
 file system is backed by and how it is opened. `Saraka.SystemIO` is a reference implementation
-over a local directory.
+over a local directory, and `Saraka.Zip` presents a zip file as a file system.
 
 Saraka means "directory" or "index" in Swahili.
 
@@ -14,12 +14,13 @@ Saraka means "directory" or "index" in Swahili.
 |-----------------------|-------------------|---------|----------|
 | `Saraka.Abstractions` | .NET Standard 2.1 | 0.1.0   | The interfaces. |
 | `Saraka.SystemIO`     | .NET Standard 2.1 | 0.1.0   | An implementation backed by a local directory, using System.IO. |
+| `Saraka.Zip`          | .NET Standard 2.1 | 0.1.0   | An implementation backed by a zip file, using System.IO.Compression. |
 
 Because they target .NET Standard 2.1, they work on .NET Core 3.0+ and .NET 5 and later. They do
 not support .NET Framework, which only implements .NET Standard up to 2.0.
 
-The solution also contains `Saraka.SystemIO.Tests`, an xUnit test suite for `Saraka.SystemIO`
-that targets .NET 10. See [Testing](#testing).
+The solution also contains `Saraka.SystemIO.Tests` and `Saraka.Zip.Tests`, xUnit test suites for
+the two implementations that target .NET 10. See [Testing](#testing).
 
 ## Interfaces
 
@@ -36,7 +37,8 @@ An open file system. Everything else is reached from its root directory.
   is open, so check it when you need it, not once up front. Write operations attempted while it is
   `false` throw `InvalidOperationException`.
 
-Dispose the file system with `await using` or `DisposeAsync` when you've finished with it. After
+Always dispose the file system with `await using` or `DisposeAsync` when you've finished with
+it. Some implementations, such as `Saraka.Zip`, only write changes to storage at that point. After
 that, operations on it and its entries throw `ObjectDisposedException`. Whether streams that are
 already open stay usable depends on the implementation.
 
@@ -107,6 +109,7 @@ conventions:
 | `FileNotFoundException` / `DirectoryNotFoundException` | `GetFileAsync` / `GetDirectoryAsync` finds no entry with that name, or the file or directory an entry refers to no longer exists. |
 | `ObjectDisposedException` | The file system has been disposed. |
 | `OperationCanceledException` | The operation was cancelled. |
+| `ArgumentOutOfRangeException` | A time passed to `SetCreationTimeUtcAsync` or `SetLastWriteTimeUtcAsync` is outside the range the file system can store. |
 | `IOException` / `UnauthorizedAccessException` | The underlying storage failed or denied access. |
 
 **Entries are locations, not handles.** An entry doesn't lock anything. Other code can change or
@@ -122,6 +125,14 @@ current name, or moving it into the directory it's already in, succeeds and does
 with `DateTimeKind.Unspecified` is treated as UTC and a `DateTimeKind.Local` value is converted.
 Creating a file or writing to it updates the last-write time automatically.
 `SetLastWriteTimeUtcAsync` is for setting a specific value.
+
+**What a file system can store.** Not every file system can store every value. An implementation
+may store times with less precision or a smaller range, store only some attributes, or ignore
+values it can't store at all.
+- File systems that don't record creation times may ignore `SetCreationTimeUtcAsync`.
+  `GetCreationTimeUtcAsync` then returns the closest value they have.
+- `SetAttributesAsync` ignores attributes the file system can't store.
+- Each implementation's section below says what it does.
 
 ## Example
 
@@ -196,6 +207,72 @@ Some behaviour depends on the host platform:
 - `ReadAllTextAsync` only checks for cancellation before and after reading, because .NET Standard
   2.1 has no cancellable `ReadToEndAsync`.
 
+## `Saraka.Zip`
+
+`Saraka.Zip.FileSystem` presents a zip file as a file system, using the zip support in
+System.IO.Compression. Open it with `OpenAsync`:
+
+```csharp
+using Saraka.Zip;
+
+await using (var zip = await FileSystem.OpenAsync(@"C:\Photos\2026.zip", canWrite: true))
+{
+    var data = await zip.Root.CreateDirectoryAsync("data");
+    await data.CreateFileAsync("notes.txt");
+}   // Changes are written to the zip file here.
+```
+
+- `canWrite: true` opens the zip file for updating and creates it if it doesn't exist. While it's
+  open, the file is locked against all other access. `canWrite: false` opens an existing zip file
+  read-only and allows other readers.
+- Changes are kept in memory and written to the zip file when the file system is disposed. If it
+  isn't disposed, the changes are lost.
+- Opening something that isn't a zip file throws `InvalidDataException`.
+
+**How entries map to paths.** The entry `data/notes.txt` is the file `/data/notes.txt`.
+- A directory exists if it has its own entry (`data/`) or if any entry is inside it.
+- Creating a directory adds an entry for it.
+- Removing the last thing from a directory adds an entry for that directory, so it doesn't
+  disappear.
+- Names are case-sensitive, so `a.txt` and `A.txt` are different files.
+- `ArgumentException` is thrown for a name that is empty, `.` or `..`, or contains `/`, `\` or a
+  control character. Other characters are allowed, including ones Windows doesn't allow in file
+  names, such as `:` and `?`. A zip file made that way may not extract cleanly on Windows.
+- Entries whose names can't be Saraka paths are ignored. These are names that start with `/`,
+  contain `.`, `..` or empty segments, or contain `\`.
+- If a zip file holds the same name twice, only the first entry is used.
+- If a zip file holds both a file `a` and entries inside a directory `a/`, both appear in
+  listings. `GetFileAsync("a")` finds the file and `GetDirectoryAsync("a")` finds the directory.
+
+**Where zip falls short of the contract.**
+- *Creation time.* Zip records only a last-write time. `GetCreationTimeUtcAsync` returns the
+  last-write time, and `SetCreationTimeUtcAsync` does nothing.
+- *Time precision and range.* Times are stored in MS-DOS format: local time, in two-second steps,
+  from 1980 to 2107. A time read back after reopening can be up to two seconds earlier than the
+  one set. Setting a last-write time outside that range throws `ArgumentOutOfRangeException`.
+- *Directory times and attributes.* A directory without its own entry reports the latest time of
+  anything inside it. Setting its time or attributes gives it an entry. The root has no entry, so
+  setting its time or attributes does nothing.
+- *Attributes.* Only the MS-DOS attributes (read-only, hidden, system, archive) are stored. Unix
+  permission bits already in an entry are preserved.
+- *Rename and move.* Zip has no rename, so these copy every affected entry to its new name and
+  delete the original. That costs time in proportion to the size of the data.
+- *Streams.* On a read-only file system, `OpenReadAsync` streams straight from the zip file. On a
+  writable one, it returns a copy of the file's contents held in memory.
+- *Concurrent streams.* On a writable file system, while a file's write stream is open, anything
+  else that reads that file's data throws `IOException`. That includes reading it, opening it
+  again, renaming it and moving it.
+- *Disposal.* Streams still open when the file system is disposed can no longer be used.
+- *Asynchrony.* The methods are async, but most of the work behind them is synchronous. .NET
+  Standard 2.1 only exposes the synchronous zip APIs. So listing, lookup, attributes, times,
+  creating, deleting, renaming and moving all run synchronously and return completed tasks.
+  - Copying data to and from streams is truly asynchronous.
+  - On .NET 10 and later, disposal uses the archive's asynchronous `DisposeAsync`, so saving
+    changes is asynchronous too.
+  - Renaming or moving large files, and reading through `OpenReadAsync` on a writable file
+    system, can block the calling thread. To avoid that on a UI thread, call them through
+    `Task.Run`.
+
 ## Building
 
 ```bash
@@ -203,12 +280,12 @@ dotnet build Saraka.slnx
 ```
 
 The `.slnx` solution format needs the .NET 9 SDK (9.0.200 or later) or Visual Studio 2022 17.13
-or later. The test project targets .NET 10, so building the whole solution needs the .NET 10 SDK.
+or later. The test projects target .NET 10, so building the whole solution needs the .NET 10 SDK.
 
 ## Testing
 
-The `Saraka.SystemIO.Tests` project holds the unit tests for `Saraka.SystemIO`. They use xUnit
-and run against real temporary directories. Run them with:
+`Saraka.SystemIO.Tests` and `Saraka.Zip.Tests` hold the unit tests for the two implementations.
+They use xUnit and run against real temporary directories and zip files. Run them with:
 
 ```bash
 dotnet test Saraka.slnx
