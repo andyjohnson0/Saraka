@@ -6,9 +6,15 @@ namespace Saraka.Abstractions
     /// An open file system. Dispose it when it is no longer needed.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// Some implementations write changes to storage only when the file system is disposed, so
+    /// always dispose it.
+    /// </para>
+    /// <para>
     /// After the file system has been disposed, operations on it and on its entries throw
     /// <see cref="ObjectDisposedException"/>. Whether streams that are already open remain usable
     /// depends on the implementation.
+    /// </para>
     /// </remarks>
     public interface IFileSystem : IAsyncDisposable
     {

@@ -5,4 +5,6 @@
   <Project Path="Saraka.Abstractions/Saraka.Abstractions.csproj" />
   <Project Path="Saraka.SystemIO.Tests/Saraka.SystemIO.Tests.csproj" />
   <Project Path="Saraka.SystemIO/Saraka.SystemIO.csproj" />
+  <Project Path="Saraka.Zip.Tests/Saraka.Zip.Tests.csproj" />
+  <Project Path="Saraka.Zip/Saraka.Zip.csproj" />
 </Solution>

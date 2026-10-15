@@ -27,6 +27,11 @@ namespace Saraka.Abstractions
     /// <see cref="UnauthorizedAccessException"/> when the underlying storage fails or denies
     /// access.
     /// </para>
+    /// <para>
+    /// Some file systems can't store every value. An implementation may store times with less
+    /// precision or a smaller range, store only some attributes, or ignore values it can't store
+    /// at all. Each implementation documents what it does.
+    /// </para>
     /// </remarks>
     public interface IFileSystemEntry
     {
@@ -118,7 +123,7 @@ namespace Saraka.Abstractions
         Task MoveToAsync(IDirectory destination, CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// Sets the entry's attributes.
+        /// Sets the entry's attributes. Attributes the file system can't store are ignored.
         /// </summary>
         /// <param name="attributes">The attributes to set.</param>
         /// <param name="cancellationToken">A token to cancel the operation.</param>
@@ -130,11 +135,17 @@ namespace Saraka.Abstractions
         /// <summary>
         /// Sets the time the entry was created, in UTC. A value whose <see cref="DateTime.Kind"/>
         /// is <see cref="DateTimeKind.Unspecified"/> is treated as UTC; a
-        /// <see cref="DateTimeKind.Local"/> value is converted to UTC.
+        /// <see cref="DateTimeKind.Local"/> value is converted to UTC. File systems that don't
+        /// record creation times may ignore this; <see cref="GetCreationTimeUtcAsync"/> then
+        /// returns the closest value they have.
         /// </summary>
         /// <param name="creationTimeUtc">The creation time to set.</param>
         /// <param name="cancellationToken">A token to cancel the operation.</param>
         /// <exception cref="InvalidOperationException">The file system is not writable.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <paramref name="creationTimeUtc"/> is outside the range of times the file system can
+        /// store.
+        /// </exception>
         /// <exception cref="FileNotFoundException">This entry is a file that no longer exists.</exception>
         /// <exception cref="DirectoryNotFoundException">This entry is a directory that no longer exists.</exception>
         Task SetCreationTimeUtcAsync(DateTime creationTimeUtc, CancellationToken cancellationToken = default);
@@ -148,6 +159,10 @@ namespace Saraka.Abstractions
         /// <param name="lastWriteTimeUtc">The last-write time to set.</param>
         /// <param name="cancellationToken">A token to cancel the operation.</param>
         /// <exception cref="InvalidOperationException">The file system is not writable.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <paramref name="lastWriteTimeUtc"/> is outside the range of times the file system can
+        /// store.
+        /// </exception>
         /// <exception cref="FileNotFoundException">This entry is a file that no longer exists.</exception>
         /// <exception cref="DirectoryNotFoundException">This entry is a directory that no longer exists.</exception>
         Task SetLastWriteTimeUtcAsync(DateTime lastWriteTimeUtc, CancellationToken cancellationToken = default);
