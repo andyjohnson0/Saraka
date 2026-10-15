@@ -1,10 +1,10 @@
 # Saraka
 
-Saraka provides a small set of async interfaces for browsing and editing a file system.
+Saraka provides a set of async interfaces for browsing and editing an abstract file system.
 
 The `Saraka.Abstractions` package defines the interfaces only. Implementations decide what the
 file system is backed by and how it is opened. `Saraka.SystemIO` is a reference implementation
-over a local directory, and `Saraka.Zip` presents a zip file as a file system.
+over a local filesystem directory hierarchy, and `Saraka.Zip` presents a zip file as a file system.
 
 Saraka means "directory" or "index" in Swahili.
 
@@ -295,6 +295,8 @@ dotnet test Saraka.slnx
 
 **Andrew Johnson** ([andy@andyjohnson.uk](mailto:andy@andyjohnson.uk), [andyjohnson.uk](https://andyjohnson.uk))
 
+Parts of this solution, and in particular the tests, were implemented using Claude Code.
+
 ## Licence
 
-Saraka is released under the [MIT Licence](LICENSE).
+Saraka is released under the [MIT Licence](LICENSE.md).
