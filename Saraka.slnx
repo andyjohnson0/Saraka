@@ -3,4 +3,6 @@
     <File Path="README.md" />
   </Folder>
   <Project Path="Saraka.Abstractions/Saraka.Abstractions.csproj" />
+  <Project Path="Saraka.SystemIO.Tests/Saraka.SystemIO.Tests.csproj" />
+  <Project Path="Saraka.SystemIO/Saraka.SystemIO.csproj" />
 </Solution>
