@@ -5,9 +5,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Android.Content;
-using Android.Provider;
-
 using Saraka.Abstractions;
 
 
@@ -68,80 +65,24 @@ namespace Saraka.AndroidSaf
 
         private static readonly char[] PatternSeparators = { '/', '\\' };
 
-        private static readonly string[] DocumentProjection =
-        {
-            DocumentsContract.Document.ColumnMimeType,
-            DocumentsContract.Document.ColumnLastModified,
-            DocumentsContract.Document.ColumnSize,
-        };
-
-        private readonly Context _context;
-        private readonly ContentResolver _resolver;
-        private readonly Android.Net.Uri _treeUri;
+        private readonly IDocumentSource _source;
         private readonly SortField _sortField;
         private readonly SortOrder _sortOrder;
-        private readonly string[]? _fileTypes;
+        private readonly List<string>? _fileTypes;
         private readonly bool _includeHiddenFiles;
         private readonly bool _includeHiddenFolders;
         private readonly DirectoryEntry _root;
         private bool _disposed;
 
-        private FileSystem(Context context, Android.Net.Uri treeUri, FileSystemOptions options)
+        private FileSystem(IDocumentSource source, FileSystemOptions options)
         {
-            _context = context.ApplicationContext ?? context;
-            _resolver = _context.ContentResolver
-                ?? throw new InvalidOperationException("The context has no content resolver.");
-            _treeUri = treeUri;
+            _source = source;
             _sortField = options.SortField;
             _sortOrder = options.SortOrder;
-            _fileTypes = options.FileTypes?.ToArray();
+            _fileTypes = DocumentSelection.ExpandFileTypes(options.FileTypes);
             _includeHiddenFiles = options.IncludeHiddenFiles;
             _includeHiddenFolders = options.IncludeHiddenFolders;
-            _root = new DirectoryEntry(this, null, string.Empty, DocumentsContract.GetTreeDocumentId(treeUri)!);
-        }
-
-        /// <summary>
-        /// Opens a document tree as a read-only file system.
-        /// </summary>
-        /// <param name="context">
-        /// A context used to reach the content resolver. Its application context is kept, not the
-        /// context itself.
-        /// </param>
-        /// <param name="treeUri">
-        /// The tree URI, as returned by the system folder picker. The app must hold permission to
-        /// read it.
-        /// </param>
-        /// <param name="options">
-        /// Options that filter and order the entries, or null to use the defaults.
-        /// </param>
-        /// <param name="cancellationToken">A token to cancel the operation.</param>
-        /// <returns>The opened file system.</returns>
-        /// <exception cref="ArgumentNullException">
-        /// <paramref name="context"/> or <paramref name="treeUri"/> is null.
-        /// </exception>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="treeUri"/> is not a document tree URI, or <paramref name="options"/>
-        /// holds an invalid value.
-        /// </exception>
-        /// <exception cref="DirectoryNotFoundException">The tree's top-level folder doesn't exist.</exception>
-        /// <exception cref="UnauthorizedAccessException">The app doesn't have permission to read the tree.</exception>
-        public static async Task<FileSystem> OpenAsync(
-            Context context,
-            Android.Net.Uri treeUri,
-            FileSystemOptions? options = null,
-            CancellationToken cancellationToken = default)
-        {
-            ArgumentNullException.ThrowIfNull(context);
-            ArgumentNullException.ThrowIfNull(treeUri);
-            if (!DocumentsContract.IsTreeUri(treeUri))
-                throw new ArgumentException("The URI is not a document tree URI.", nameof(treeUri));
-            options ??= new FileSystemOptions();
-            ValidateOptions(options, nameof(options));
-
-            var fileSystem = new FileSystem(context, treeUri, options);
-            // Reading the root's attributes checks that it exists, is a folder and can be read.
-            await fileSystem._root.GetAttributesAsync(cancellationToken).ConfigureAwait(false);
-            return fileSystem;
+            _root = new DirectoryEntry(this, null, string.Empty, source.RootDocumentId);
         }
 
         /// <inheritdoc/>
@@ -161,39 +102,23 @@ namespace Saraka.AndroidSaf
             return default;
         }
 
+        private static async Task<FileSystem> OpenCoreAsync(
+            IDocumentSource source,
+            FileSystemOptions? options,
+            CancellationToken cancellationToken)
+        {
+            options ??= new FileSystemOptions();
+            ValidateOptions(options, nameof(options));
+
+            var fileSystem = new FileSystem(source, options);
+            // Reading the root's attributes checks that it exists, is a folder and can be read.
+            await fileSystem._root.GetAttributesAsync(cancellationToken).ConfigureAwait(false);
+            return fileSystem;
+        }
+
         private void ThrowIfDisposed()
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-        }
-
-        private Android.Net.Uri DocumentUri(string documentId)
-        {
-            return DocumentsContract.BuildDocumentUriUsingTree(_treeUri, documentId)!;
-        }
-
-        // Returns null if the provider has no such document.
-        private DocumentDetails? QueryDocument(string documentId)
-        {
-            using var cursor = _resolver.Query(DocumentUri(documentId), DocumentProjection, null, null, null);
-            if (cursor == null || !cursor.MoveToFirst())
-                return null;
-
-            return new DocumentDetails(
-                IsDirectory: cursor.GetString(0) == DocumentsContract.Document.MimeTypeDir,
-                LastModified: cursor.IsNull(1) ? null : cursor.GetLong(1),
-                Size: cursor.IsNull(2) ? null : cursor.GetLong(2));
-        }
-
-        private DocumentCollection ListDocuments(string directoryDocumentId)
-        {
-            return DocumentCollection.Create(
-                _context,
-                DocumentUri(directoryDocumentId),
-                _sortField,
-                _sortOrder,
-                _fileTypes,
-                _includeHiddenFiles,
-                _includeHiddenFolders);
         }
 
         private static void ValidateOptions(FileSystemOptions options, string paramName)
@@ -238,38 +163,5 @@ namespace Saraka.AndroidSaf
                 ? DateTimeOffset.FromUnixTimeMilliseconds(milliseconds.Value).UtcDateTime
                 : DateTime.UnixEpoch;
         }
-
-        // Runs an operation on the thread pool, because provider calls block, and reports the
-        // provider's Java exceptions as the exceptions the contract specifies.
-        private static async Task<T> RunTranslatedAsync<T>(
-            Func<Task<T>> operation,
-            Func<Exception, IOException> notFound,
-            CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            try
-            {
-                return await Task.Run(operation, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Java.Lang.Throwable ex)
-            {
-                throw TranslateProviderException(ex, notFound);
-            }
-        }
-
-        // The original exception is kept as the inner exception. Anything not recognised is a
-        // failure of the provider, and so of the underlying storage.
-        private static Exception TranslateProviderException(Java.Lang.Throwable exception, Func<Exception, IOException> notFound)
-        {
-            return exception switch
-            {
-                Java.Lang.SecurityException => new UnauthorizedAccessException(exception.Message, exception),
-                Java.IO.FileNotFoundException => notFound(exception),
-                Android.OS.OperationCanceledException => new OperationCanceledException(exception.Message, exception),
-                _ => new IOException(exception.Message, exception),
-            };
-        }
-
-        private readonly record struct DocumentDetails(bool IsDirectory, long? LastModified, long? Size);
     }
 }

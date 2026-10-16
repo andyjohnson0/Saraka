@@ -3,6 +3,7 @@
     <File Path="README.md" />
   </Folder>
   <Project Path="Saraka.Abstractions/Saraka.Abstractions.csproj" />
+  <Project Path="Saraka.AndroidSaf.Tests/Saraka.AndroidSaf.Tests.csproj" />
   <Project Path="Saraka.AndroidSaf/Saraka.AndroidSaf.csproj" Id="42be6adf-0843-47e5-a692-8c183c5b68cc" />
   <Project Path="Saraka.SystemIO.Tests/Saraka.SystemIO.Tests.csproj" />
   <Project Path="Saraka.SystemIO/Saraka.SystemIO.csproj" />

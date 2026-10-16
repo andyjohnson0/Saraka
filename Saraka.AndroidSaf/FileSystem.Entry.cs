@@ -31,8 +31,6 @@ namespace Saraka.AndroidSaf
 
             protected string DocumentId { get; }
 
-            protected Android.Net.Uri DocumentUri => Owner.DocumentUri(DocumentId);
-
             protected abstract bool IsDirectory { get; }
 
             public string Name { get; }
@@ -104,23 +102,58 @@ namespace Saraka.AndroidSaf
             // A document that has become the other kind of entry counts as missing.
             protected DocumentDetails GetExistingDetails()
             {
-                var details = Owner.QueryDocument(DocumentId);
+                var details = FromSource(() => Owner._source.QueryDocument(DocumentId));
                 if (details == null || details.Value.IsDirectory != IsDirectory)
                     throw NotFound(null);
                 return details.Value;
             }
 
-            protected async Task<T> RunAsync<T>(Func<T> operation, CancellationToken cancellationToken)
+            // Calls the document source, reporting a missing document as this entry's own
+            // not-found exception.
+            protected T FromSource<T>(Func<T> call)
             {
-                Owner.ThrowIfDisposed();
-                return await RunTranslatedAsync(() => Task.FromResult(operation()), NotFound, cancellationToken)
-                    .ConfigureAwait(false);
+                try
+                {
+                    return call();
+                }
+                catch (FileNotFoundException ex)
+                {
+                    throw NotFound(ex);
+                }
+                catch (DirectoryNotFoundException ex)
+                {
+                    throw NotFound(ex);
+                }
+            }
+
+            // The same, for reading a stream from the source.
+            protected async Task<T> FromSourceAsync<T>(Func<Task<T>> call)
+            {
+                try
+                {
+                    return await call().ConfigureAwait(false);
+                }
+                catch (FileNotFoundException ex)
+                {
+                    throw NotFound(ex);
+                }
+                catch (DirectoryNotFoundException ex)
+                {
+                    throw NotFound(ex);
+                }
+            }
+
+            // Runs an operation on the thread pool, because provider calls block.
+            protected Task<T> RunAsync<T>(Func<T> operation, CancellationToken cancellationToken)
+            {
+                return RunStreamingAsync(() => Task.FromResult(operation()), cancellationToken);
             }
 
             protected async Task<T> RunStreamingAsync<T>(Func<Task<T>> operation, CancellationToken cancellationToken)
             {
                 Owner.ThrowIfDisposed();
-                return await RunTranslatedAsync(operation, NotFound, cancellationToken).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                return await Task.Run(operation, cancellationToken).ConfigureAwait(false);
             }
 
             // Write operations make the usual checks, in the same order as the other

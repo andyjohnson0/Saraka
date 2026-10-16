@@ -129,33 +129,5 @@ namespace Saraka.AndroidSaf
 
             return documents;
         }
-
-
-        /// <summary>
-        /// Count the documents with each file extension. Counts for "jpg" are merged into "jpeg".
-        /// </summary>
-        /// <param name="displayNames">Document display names</param>
-        /// <returns>Count for each lowercase file extension, excluding the period.</returns>
-        public static Dictionary<string, int> CountExtensions(IEnumerable<string> displayNames)
-        {
-            ArgumentNullException.ThrowIfNull(displayNames);
-
-            var fileExtensionCounts = displayNames
-                .GroupBy(filename => Path.GetExtension(filename).ToLower().TrimStart('.')) // Group by lowercase file extension, *excluding* period. "" if none.
-                .Select(group => new KeyValuePair<string, int>(group.Key, group.Count())).ToDictionary();
-            if (fileExtensionCounts.ContainsKey(JpgExtension))
-            {
-                if (fileExtensionCounts.ContainsKey(JpegExtension))
-                {
-                    fileExtensionCounts[JpegExtension] += fileExtensionCounts[JpgExtension];
-                }
-                else
-                {
-                    fileExtensionCounts[JpegExtension] = fileExtensionCounts[JpgExtension];
-                }
-                fileExtensionCounts.Remove(JpgExtension);
-            }
-            return fileExtensionCounts;
-        }
     }
 }

@@ -6,8 +6,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Android.Provider;
-
 using Saraka.Abstractions;
 
 
@@ -120,30 +118,30 @@ namespace Saraka.AndroidSaf
             private List<Entry> ListChildren(
                 bool files, bool directories, Func<string, bool> match, CancellationToken cancellationToken)
             {
-                var collection = Owner.ListDocuments(DocumentId);
+                var listing = FromSource(() => Owner._source.ListChildren(DocumentId));
                 var children = new List<Entry>();
 
                 if (directories)
                 {
                     var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    for (var i = 0; i < collection.FolderCount; i++)
+                    foreach (var folder in DocumentSelection.SelectFolders(
+                        listing, Owner._sortField, Owner._sortOrder, Owner._includeHiddenFolders))
                     {
                         cancellationToken.ThrowIfCancellationRequested();
-                        var name = collection.FolderDisplayNameAt(i);
-                        if (IsValidName(name) && seen.Add(name) && match(name))
-                            children.Add(new DirectoryEntry(Owner, this, name, collection.FolderDocumentIdAt(i)));
+                        if (IsValidName(folder.DisplayName) && seen.Add(folder.DisplayName) && match(folder.DisplayName))
+                            children.Add(new DirectoryEntry(Owner, this, folder.DisplayName, folder.DocumentId));
                     }
                 }
 
                 if (files)
                 {
                     var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    for (var i = 0; i < collection.Length; i++)
+                    foreach (var file in DocumentSelection.Select(
+                        listing, Owner._fileTypes, Owner._sortField, Owner._sortOrder, Owner._includeHiddenFiles))
                     {
                         cancellationToken.ThrowIfCancellationRequested();
-                        var name = collection.DisplayNameAt(i);
-                        if (IsValidName(name) && seen.Add(name) && match(name))
-                            children.Add(new FileEntry(Owner, this, name, DocumentsContract.GetDocumentId(collection.UriAt(i))!));
+                        if (IsValidName(file.DisplayName) && seen.Add(file.DisplayName) && match(file.DisplayName))
+                            children.Add(new FileEntry(Owner, this, file.DisplayName, file.DocumentId));
                     }
                 }
 

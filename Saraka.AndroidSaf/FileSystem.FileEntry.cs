@@ -35,12 +35,15 @@ namespace Saraka.AndroidSaf
                         return size.Value;
 
                     using var stream = OpenStream();
-                    var buffer = new byte[CopyBufferSize];
-                    long length = 0;
-                    int read;
-                    while ((read = await stream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
-                        length += read;
-                    return length;
+                    return await FromSourceAsync(async () =>
+                    {
+                        var buffer = new byte[CopyBufferSize];
+                        long length = 0;
+                        int read;
+                        while ((read = await stream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+                            length += read;
+                        return length;
+                    }).ConfigureAwait(false);
                 }, cancellationToken);
             }
 
@@ -51,7 +54,11 @@ namespace Saraka.AndroidSaf
                     EnsureExists();
                     using var stream = OpenStream();
                     using var buffer = new MemoryStream();
-                    await stream.CopyToAsync(buffer, CopyBufferSize, cancellationToken).ConfigureAwait(false);
+                    await FromSourceAsync(async () =>
+                    {
+                        await stream.CopyToAsync(buffer, CopyBufferSize, cancellationToken).ConfigureAwait(false);
+                        return true;
+                    }).ConfigureAwait(false);
                     return buffer.ToArray();
                 }, cancellationToken);
             }
@@ -63,7 +70,7 @@ namespace Saraka.AndroidSaf
                     EnsureExists();
                     using var stream = OpenStream();
                     using var reader = new StreamReader(stream, Utf8, detectEncodingFromByteOrderMarks: false);
-                    return await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+                    return await FromSourceAsync(() => reader.ReadToEndAsync(cancellationToken)).ConfigureAwait(false);
                 }, cancellationToken);
             }
 
@@ -91,9 +98,7 @@ namespace Saraka.AndroidSaf
 
             private Stream OpenStream()
             {
-                var stream = Owner._resolver.OpenInputStream(DocumentUri)
-                    ?? throw new IOException($"The provider returned no stream for '{Path}'.");
-                return new ProviderStream(stream, NotFound);
+                return FromSource(() => Owner._source.OpenRead(DocumentId));
             }
         }
     }

@@ -21,8 +21,9 @@ Saraka means "directory" or "index" in Swahili.
 
 `Saraka.AndroidSaf` needs Android 13 (API level 33) or later.
 
-The solution also contains `Saraka.SystemIO.Tests` and `Saraka.Zip.Tests`, xUnit test suites for
-the two implementations that target .NET 10. See [Testing](#testing).
+The solution also contains `Saraka.SystemIO.Tests`, `Saraka.Zip.Tests` and
+`Saraka.AndroidSaf.Tests`, xUnit test suites for the three implementations that target .NET 10.
+See [Testing](#testing).
 
 ## Interfaces
 
@@ -353,8 +354,15 @@ or later. The test projects target .NET 10, so building the whole solution needs
 
 ## Testing
 
-`Saraka.SystemIO.Tests` and `Saraka.Zip.Tests` hold the unit tests for the two implementations.
-They use xUnit and run against real temporary directories and zip files. Run them with:
+`Saraka.SystemIO.Tests` and `Saraka.Zip.Tests` hold the unit tests for the SystemIO and Zip
+implementations. They use xUnit and run against real temporary directories and zip files.
+
+`Saraka.AndroidSaf.Tests` runs on Windows, not Android. All of `Saraka.AndroidSaf` except its
+`Platform` folder is plain C#, and the test project compiles those files in directly. Instead of the
+content resolver, the tests use an in-memory document provider. The code in `Platform`, which calls
+the Android document APIs, isn't covered by these tests.
+
+Run all the tests with:
 
 ```bash
 dotnet test Saraka.slnx
