@@ -14,10 +14,10 @@ Saraka means "directory" or "index" in Swahili.
 
 | Package               | Target framework  | Version | Contents |
 |-----------------------|-------------------|---------|----------|
-| `Saraka.Abstractions` | .NET Standard 2.1 | 0.1.0   | The interfaces. |
-| `Saraka.SystemIO`     | .NET Standard 2.1 | 0.1.0   | An implementation backed by a local directory, using System.IO. |
-| `Saraka.Zip`          | .NET Standard 2.1 | 0.1.0   | An implementation backed by a zip file, using System.IO.Compression. |
-| `Saraka.AndroidSaf`   | .NET 10 for Android | 0.1.0   | A read-only implementation backed by an Android Storage Access Framework document tree. |
+| `Saraka.Abstractions` | .NET Standard 2.1 | 0.2.0   | The interfaces. |
+| `Saraka.SystemIO`     | .NET Standard 2.1 | 0.2.0   | An implementation backed by a local directory, using System.IO. |
+| `Saraka.Zip`          | .NET Standard 2.1 | 0.2.0   | An implementation backed by a zip file, using System.IO.Compression. |
+| `Saraka.AndroidSaf`   | .NET 10 for Android | 0.2.0   | A read-only implementation backed by an Android Storage Access Framework document tree. |
 
 `Saraka.AndroidSaf` needs Android 13 (API level 33) or later.
 

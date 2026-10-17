@@ -4,7 +4,7 @@
     <TargetFramework>netstandard2.1</TargetFramework>
     <RootNamespace>Saraka.Abstractions</RootNamespace>
     <Nullable>enable</Nullable>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <Authors>Andrew Johnson</Authors>
     <Description>Async interfaces for browsing and editing a file system: IFileSystem, IDirectory, IFile and IFileSystemEntry. Implementations decide what the file system is backed by.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
