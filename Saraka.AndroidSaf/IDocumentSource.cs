@@ -10,11 +10,19 @@ namespace Saraka.AndroidSaf
     /// the device.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The methods block. Failures are reported as .NET exceptions, never as Android or Java ones:
     /// <see cref="UnauthorizedAccessException"/> when access is denied,
-    /// <see cref="FileNotFoundException"/> when a document doesn't exist,
+    /// <see cref="FileNotFoundException"/> when the provider says a document doesn't exist,
     /// <see cref="OperationCanceledException"/> when the provider cancels, and
     /// <see cref="IOException"/> for any other failure.
+    /// </para>
+    /// <para>
+    /// A missing document isn't always reported as missing. Android's local storage provider checks
+    /// that a document is inside the tree before every call, and that check fails with an
+    /// IllegalArgumentException, reported as <see cref="IOException"/>, when the document is
+    /// missing. Callers tell the two apart by checking the parent folder after a failure.
+    /// </para>
     /// </remarks>
     internal interface IDocumentSource
     {
@@ -27,7 +35,10 @@ namespace Saraka.AndroidSaf
         /// Gets the details of a document.
         /// </summary>
         /// <param name="documentId">The document ID.</param>
-        /// <returns>The document's details, or null if it doesn't exist.</returns>
+        /// <returns>
+        /// The document's details, or null if the provider reports that it doesn't exist. Some
+        /// providers fail with an <see cref="IOException"/> instead; see the remarks.
+        /// </returns>
         DocumentDetails? QueryDocument(string documentId);
 
         /// <summary>
@@ -35,7 +46,7 @@ namespace Saraka.AndroidSaf
         /// </summary>
         /// <param name="directoryDocumentId">The folder's document ID.</param>
         /// <returns>The folder's children.</returns>
-        /// <exception cref="FileNotFoundException">The folder doesn't exist.</exception>
+        /// <exception cref="FileNotFoundException">The provider reports that the folder doesn't exist.</exception>
         IReadOnlyList<DocumentEntry> ListChildren(string directoryDocumentId);
 
         /// <summary>
@@ -44,7 +55,7 @@ namespace Saraka.AndroidSaf
         /// </summary>
         /// <param name="documentId">The document ID.</param>
         /// <returns>The stream, which the caller disposes.</returns>
-        /// <exception cref="FileNotFoundException">The document doesn't exist.</exception>
+        /// <exception cref="FileNotFoundException">The provider reports that the document doesn't exist.</exception>
         Stream OpenRead(string documentId);
     }
 }

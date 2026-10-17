@@ -26,23 +26,19 @@ namespace Saraka.SystemIO
             }
 
             /// <inheritdoc/>
-            public Task<IEnumerable<IFileSystemEntry>> GetEntriesAsync(CancellationToken cancellationToken = default)
+            public Task<IEnumerable<IFileSystemEntry>> GetEntriesAsync(EntryOptions? options = null, CancellationToken cancellationToken = default)
             {
                 return Complete(() =>
                 {
                     Owner.ThrowIfDisposed();
                     cancellationToken.ThrowIfCancellationRequested();
                     EnsureExists();
-                    var entries = new List<IFileSystemEntry>();
-                    foreach (var info in new DirectoryInfo(FullPath).EnumerateFileSystemInfos("*", ListingOptions))
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        var childPath = CombinePath(Path, info.Name);
-                        entries.Add(info is DirectoryInfo
-                            ? (IFileSystemEntry)new DirectoryEntry(Owner, childPath)
-                            : new FileEntry(Owner, childPath));
-                    }
-                    return (IEnumerable<IFileSystemEntry>)entries;
+                    var infos = new DirectoryInfo(FullPath).EnumerateFileSystemInfos("*", ListingOptions);
+                    return (IEnumerable<IFileSystemEntry>)Select(infos, options, cancellationToken)
+                        .Select(info => info is DirectoryInfo
+                            ? (IFileSystemEntry)new DirectoryEntry(Owner, CombinePath(Path, info.Name))
+                            : new FileEntry(Owner, CombinePath(Path, info.Name)))
+                        .ToList();
                 });
             }
 
@@ -71,24 +67,24 @@ namespace Saraka.SystemIO
             }
 
             /// <inheritdoc/>
-            public Task<IEnumerable<IFile>> EnumerateFilesAsync(string searchPattern = "*", CancellationToken cancellationToken = default)
+            public Task<IEnumerable<IFile>> EnumerateFilesAsync(string searchPattern = "*", EntryOptions? options = null, CancellationToken cancellationToken = default)
             {
                 return Complete(() =>
                 {
                     var info = PrepareEnumeration(searchPattern, cancellationToken);
-                    return (IEnumerable<IFile>)info.EnumerateFiles(searchPattern, ListingOptions)
+                    return (IEnumerable<IFile>)Select(info.EnumerateFiles(searchPattern, ListingOptions), options, cancellationToken)
                         .Select(file => (IFile)new FileEntry(Owner, CombinePath(Path, file.Name)))
                         .ToList();
                 });
             }
 
             /// <inheritdoc/>
-            public Task<IEnumerable<IDirectory>> EnumerateDirectoriesAsync(string searchPattern = "*", CancellationToken cancellationToken = default)
+            public Task<IEnumerable<IDirectory>> EnumerateDirectoriesAsync(string searchPattern = "*", EntryOptions? options = null, CancellationToken cancellationToken = default)
             {
                 return Complete(() =>
                 {
                     var info = PrepareEnumeration(searchPattern, cancellationToken);
-                    return (IEnumerable<IDirectory>)info.EnumerateDirectories(searchPattern, ListingOptions)
+                    return (IEnumerable<IDirectory>)Select(info.EnumerateDirectories(searchPattern, ListingOptions), options, cancellationToken)
                         .Select(directory => (IDirectory)new DirectoryEntry(Owner, CombinePath(Path, directory.Name)))
                         .ToList();
                 });
@@ -173,6 +169,33 @@ namespace Saraka.SystemIO
                 Directory.Move(sourceFullPath, destinationFullPath);
 
             /// <summary>
+            /// Leaves out names that can't be presented, then applies the options. An entry is
+            /// hidden if the file system gives it the Hidden attribute, which .NET also reports for
+            /// names starting with "." on Linux and macOS.
+            /// </summary>
+            /// <typeparam name="T">The kind of System.IO object.</typeparam>
+            /// <param name="infos">The directory's contents, from System.IO.</param>
+            /// <param name="options">The options, or null.</param>
+            /// <param name="cancellationToken">A token to cancel the operation.</param>
+            /// <returns>The selected contents.</returns>
+            private static List<T> Select<T>(IEnumerable<T> infos, EntryOptions? options, CancellationToken cancellationToken)
+                where T : FileSystemInfo
+            {
+                var presentable = infos.Where(info =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    return IsPresentableName(info.Name);
+                });
+                return EntrySelection.Apply(
+                    presentable,
+                    options,
+                    info => info.Name,
+                    info => info is DirectoryInfo,
+                    info => (info.Attributes & FileAttributes.Hidden) != 0,
+                    info => info.LastWriteTimeUtc);
+            }
+
+            /// <summary>
             /// Makes the checks for looking up a child by name.
             /// </summary>
             /// <param name="name">The child's name.</param>
@@ -188,7 +211,7 @@ namespace Saraka.SystemIO
             }
 
             /// <summary>
-            /// Makes the checks for listing children that match a pattern.
+            /// Makes the checks for enumerating children that match a pattern.
             /// </summary>
             /// <param name="searchPattern">The search pattern.</param>
             /// <param name="cancellationToken">A token to cancel the operation.</param>

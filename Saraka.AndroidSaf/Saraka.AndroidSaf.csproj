@@ -10,7 +10,7 @@
     -->
     <IsTrimmable>true</IsTrimmable>
     <RootNamespace>Saraka.AndroidSaf</RootNamespace>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <Authors>Andrew Johnson</Authors>
     <Description>A read-only Saraka file system backed by an Android Storage Access Framework document tree, such as a folder chosen with the system folder picker. Requires Android 13 (API 33) or later.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

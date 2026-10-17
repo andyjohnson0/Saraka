@@ -25,7 +25,7 @@ public class EntryTests : AndroidSafTestBase
     {
         Source.AddFile(RootId, ".a.txt");
         Source.AddFolder(RootId, ".d");
-        var root = await OpenRootAsync(ShowHidden());
+        var root = await OpenRootAsync();
 
         Assert.Equal(FileAttributes.Hidden, await (await root.GetFileAsync(".a.txt")).GetAttributesAsync());
         Assert.Equal(FileAttributes.Directory | FileAttributes.Hidden, await (await root.GetDirectoryAsync(".d")).GetAttributesAsync());
@@ -216,7 +216,7 @@ public class EntryTests : AndroidSafTestBase
         foreach (var operation in WriteOperations.Cast<object[]>().Select(row => (string)row[0]))
             await Assert.ThrowsAsync<InvalidOperationException>(() => RunWrite(operation, root, file, dir, CancellationToken.None));
 
-        Assert.Equal(new[] { "d", "a.txt" }, Names(await root.GetEntriesAsync()));
+        Assert.Equal(new[] { "d", "a.txt" }, Names(await root.GetEntriesAsync(ByName())));
         Assert.Equal("/a.txt", file.Path);
         Assert.Equal("/d", dir.Path);
         Assert.Equal("hello", await file.ReadAllTextAsync());

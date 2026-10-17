@@ -21,8 +21,9 @@ namespace Saraka.Zip
     /// </para>
     /// <para>
     /// A writable file system holds the zip file open exclusively, and changes are written to it
-    /// when the file system is disposed. Instances of this class and of the entries it returns
-    /// are not thread-safe.
+    /// when the file system is disposed. Instances can be used from several threads at once:
+    /// every operation on the archive holds a lock, and read streams don't share the
+    /// archive's file handle.
     /// </para>
     /// <para>
     /// .NET Standard 2.1 exposes only the synchronous zip APIs, so most operations do their work
@@ -55,9 +56,11 @@ namespace Saraka.Zip
         private static readonly char[] PatternSeparators = { '/', '\\' };
 
         private readonly ZipArchive _archive;
+        private readonly SemaphoreSlim _lock = new SemaphoreSlim(1, 1);
+        private readonly string _zipPath;
         private readonly DateTime _archiveLastWriteTimeUtc;
         private readonly DirectoryEntry _root;
-        private bool _disposed;
+        private volatile bool _disposed;
 
         /// <summary>
         /// Creates a file system over an open archive.
@@ -67,9 +70,12 @@ namespace Saraka.Zip
         /// <param name="archiveLastWriteTimeUtc">
         /// The zip file's last-write time, reported by an empty root directory.
         /// </param>
-        private FileSystem(ZipArchive archive, bool canWrite, DateTime archiveLastWriteTimeUtc)
+        /// <param name="zipPath">The zip file's full path.</param>
+        private FileSystem(ZipArchive archive, bool canWrite, DateTime archiveLastWriteTimeUtc, string zipPath)
         {
             _archive = archive;
+            _zipPath = zipPath;
+            DisplayName = Path.GetFileName(zipPath);
             _archiveLastWriteTimeUtc = archiveLastWriteTimeUtc;
             CanWrite = canWrite;
             _root = new DirectoryEntry(this, RootPath);
@@ -118,7 +124,7 @@ namespace Saraka.Zip
                 {
                     var lastWriteTimeUtc = File.GetLastWriteTimeUtc(fullPath);
                     var mode = canWrite ? ZipArchiveMode.Update : ZipArchiveMode.Read;
-                    return new FileSystem(new ZipArchive(stream, mode, leaveOpen: false), canWrite, lastWriteTimeUtc);
+                    return new FileSystem(new ZipArchive(stream, mode, leaveOpen: false), canWrite, lastWriteTimeUtc, fullPath);
                 }
                 catch
                 {
@@ -137,23 +143,160 @@ namespace Saraka.Zip
         /// <remarks>This is the value passed to <see cref="OpenAsync"/> and doesn't change.</remarks>
         public bool CanWrite { get; }
 
+        /// <inheritdoc/>
+        /// <remarks>Zip entry names are case-sensitive, so this is <see cref="StringComparer.Ordinal"/>.</remarks>
+        public StringComparer NameComparer => StringComparer.Ordinal;
+
+        /// <inheritdoc/>
+        /// <remarks>The zip file's name, such as "photos.zip".</remarks>
+        public string DisplayName { get; }
+
+        /// <inheritdoc/>
+        public Task<IDirectory> GetDirectoryAsync(string path, CancellationToken cancellationToken = default)
+        {
+            return Locked(() =>
+            {
+                ThrowIfDisposed();
+                var names = SplitPath(path, nameof(path));
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!DirectoryExists(ToEntryName(path)))
+                    throw new DirectoryNotFoundException($"There's no directory at '{path}'.");
+                return names.Length == 0 ? (IDirectory)_root : new DirectoryEntry(this, path);
+            });
+        }
+
+        /// <inheritdoc/>
+        public Task<IFile> GetFileAsync(string path, CancellationToken cancellationToken = default)
+        {
+            return Locked(() =>
+            {
+                ThrowIfDisposed();
+                var names = SplitPath(path, nameof(path));
+                if (names.Length == 0)
+                    throw new ArgumentException("\"/\" is the root directory, not a file.", nameof(path));
+                cancellationToken.ThrowIfCancellationRequested();
+                var entryName = ToEntryName(path);
+                if (!FileExists(entryName))
+                {
+                    if (!DirectoryExists(GetParentName(entryName)))
+                        throw new DirectoryNotFoundException($"There's no directory at '{GetParentPath(path)}'.");
+                    throw new FileNotFoundException($"There's no file at '{path}'.");
+                }
+                return (IFile)new FileEntry(this, path);
+            });
+        }
+
         /// <summary>
         /// Closes the file system, writing any changes to the zip file. Operations on the file
-        /// system or its entries then throw <see cref="ObjectDisposedException"/>, and streams
-        /// that are still open can no longer be used.
+        /// system or its entries then throw <see cref="ObjectDisposedException"/>. Streams opened
+        /// for reading stay usable until they're disposed; streams opened for writing don't.
         /// </summary>
         public async ValueTask DisposeAsync()
         {
-            if (_disposed)
-                return;
-            _disposed = true;
+            await _lock.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                if (_disposed)
+                    return;
+                _disposed = true;
 
-            // ZipArchive implements IAsyncDisposable from .NET 10, but .NET Standard 2.1 can't
-            // see that, so check at run time.
-            if (_archive is IAsyncDisposable asyncDisposable)
-                await asyncDisposable.DisposeAsync().ConfigureAwait(false);
-            else
-                _archive.Dispose();
+                // ZipArchive implements IAsyncDisposable from .NET 10, but .NET Standard 2.1 can't
+                // see that, so check at run time.
+                if (_archive is IAsyncDisposable asyncDisposable)
+                    await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+                else
+                    _archive.Dispose();
+            }
+            finally
+            {
+                _lock.Release();
+            }
+        }
+
+        /// <summary>
+        /// Runs a synchronous operation while holding the archive lock, reporting its outcome
+        /// through a task. Every operation on the archive goes through this or
+        /// <see cref="LockedAsync{T}"/>, because <see cref="ZipArchive"/> isn't thread-safe.
+        /// </summary>
+        /// <typeparam name="T">The operation's result type.</typeparam>
+        /// <param name="operation">The operation.</param>
+        /// <returns>A completed, cancelled or faulted task.</returns>
+        private Task<T> Locked<T>(Func<T> operation)
+        {
+            return Complete(() =>
+            {
+                _lock.Wait();
+                try
+                {
+                    return operation();
+                }
+                finally
+                {
+                    _lock.Release();
+                }
+            });
+        }
+
+        /// <summary>
+        /// Runs a synchronous operation that has no result while holding the archive lock.
+        /// </summary>
+        /// <param name="operation">The operation.</param>
+        /// <returns>A completed, cancelled or faulted task.</returns>
+        private Task Locked(Action operation)
+        {
+            return Locked(() =>
+            {
+                operation();
+                return true;
+            });
+        }
+
+        /// <summary>
+        /// Runs an asynchronous operation while holding the archive lock, for operations that
+        /// copy data into the archive.
+        /// </summary>
+        /// <typeparam name="T">The operation's result type.</typeparam>
+        /// <param name="operation">The operation.</param>
+        /// <returns>The operation's result.</returns>
+        private async Task<T> LockedAsync<T>(Func<Task<T>> operation)
+        {
+            await _lock.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                return await operation().ConfigureAwait(false);
+            }
+            finally
+            {
+                _lock.Release();
+            }
+        }
+
+        /// <summary>
+        /// Opens a read stream for a file in a read-only archive, with its own file handle and
+        /// archive. Streams that share the file system's archive would share its file position, so
+        /// they couldn't be read in parallel. A stream with its own archive also stays usable after
+        /// the file system is disposed.
+        /// </summary>
+        /// <param name="entryName">The file's zip entry name.</param>
+        /// <returns>A read-only stream that closes its archive when it's disposed.</returns>
+        /// <exception cref="FileNotFoundException">The file isn't in the zip file.</exception>
+        private Stream OpenIndependentReadStream(string entryName)
+        {
+            var archive = new ZipArchive(
+                new FileStream(_zipPath, FileMode.Open, FileAccess.Read, FileShare.Read),
+                ZipArchiveMode.Read,
+                leaveOpen: false);
+            try
+            {
+                var entry = archive.Entries.FirstOrDefault(e => string.Equals(e.FullName, entryName, StringComparison.Ordinal))
+                    ?? throw new FileNotFoundException($"The file '/{entryName}' does not exist.");
+                return new ArchiveOwningStream(entry.Open(), archive);
+            }
+            catch
+            {
+                archive.Dispose();
+                throw;
+            }
         }
 
         /// <summary>
@@ -369,6 +512,21 @@ namespace Saraka.Zip
                 throw new ArgumentException(
                     $"'{name}' is not a valid name. Names may not be empty, \".\" or \"..\", or contain \"/\", \"\\\" or control characters.",
                     paramName);
+        }
+
+        /// <summary>
+        /// Splits a path into names, checking that the path is valid and that each name is valid
+        /// in this file system.
+        /// </summary>
+        /// <param name="path">The path.</param>
+        /// <param name="paramName">The name of the parameter it was passed as.</param>
+        /// <returns>The names along the path.</returns>
+        private static string[] SplitPath(string? path, string paramName)
+        {
+            var names = SarakaPath.Split(path!, paramName);
+            foreach (var name in names)
+                ValidateName(name, paramName);
+            return names;
         }
 
         /// <summary>

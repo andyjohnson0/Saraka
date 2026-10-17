@@ -76,6 +76,22 @@ public class FileTests : AndroidSafTestBase
     }
 
     [Fact]
+    public async Task Reads_OpenTheDocumentWithoutQueryingItFirst()
+    {
+        var file = await CreateFileAsync("hello");
+        var queries = Source.QueryCount;
+
+        using (await file.OpenReadAsync())
+        {
+        }
+        await file.ReadAllBytesAsync();
+        await file.ReadAllTextAsync();
+
+        Assert.Equal(queries, Source.QueryCount);
+        Assert.Equal(3, Source.OpenReadCount);
+    }
+
+    [Fact]
     public async Task OpenReadAsync_ReturnsAReadableStreamOfTheContents()
     {
         var file = await CreateFileAsync("hello");

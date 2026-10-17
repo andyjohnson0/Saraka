@@ -3,12 +3,25 @@ using Saraka.Abstractions;
 namespace Saraka.AndroidSaf.Tests;
 
 /// <summary>
-/// Tests for listings, lookups and search patterns, and for how the options filter and order them.
+/// Tests for a directory's contents, lookups and search patterns, and for how
+/// <see cref="EntryOptions"/> filter and sort the contents.
 /// </summary>
 public class DirectoryTests : AndroidSafTestBase
 {
     [Fact]
-    public async Task GetEntriesAsync_ListsDirectoriesBeforeFiles()
+    public async Task GetEntriesAsync_NoOptions_ReturnsEveryEntryInTheProvidersOrder()
+    {
+        Source.AddFile(RootId, "b.txt");
+        Source.AddFolder(RootId, "z");
+        Source.AddFile(RootId, ".hidden");
+        Source.AddFolder(RootId, "a");
+        var root = await OpenRootAsync();
+
+        Assert.Equal(new[] { "b.txt", "z", ".hidden", "a" }, Names(await root.GetEntriesAsync()));
+    }
+
+    [Fact]
+    public async Task GetEntriesAsync_Sorted_ListsDirectoriesBeforeFiles()
     {
         Source.AddFile(RootId, "a.txt");
         Source.AddFolder(RootId, "z");
@@ -16,7 +29,7 @@ public class DirectoryTests : AndroidSafTestBase
         Source.AddFolder(RootId, "y");
         var root = await OpenRootAsync();
 
-        var entries = (await root.GetEntriesAsync()).ToList();
+        var entries = (await root.GetEntriesAsync(ByName())).ToList();
 
         Assert.Equal(new[] { "y", "z", "a.txt", "b.txt" }, Names(entries));
         Assert.All(entries.Take(2), e => Assert.IsAssignableFrom<IDirectory>(e));
@@ -52,36 +65,40 @@ public class DirectoryTests : AndroidSafTestBase
     }
 
     [Theory]
-    [InlineData(SortOrder.Ascending, new[] { "a", "B", "c", "a.png", "B.png", "c.png" })]
-    [InlineData(SortOrder.Descending, new[] { "c", "B", "a", "c.png", "B.png", "a.png" })]
-    public async Task GetEntriesAsync_SortsByNameIgnoringCase(SortOrder sortOrder, string[] expected)
+    [InlineData(EntrySortDirection.Ascending, new[] { "a", "B", "c", "a.png", "B.png", "c.png" })]
+    [InlineData(EntrySortDirection.Descending, new[] { "c", "B", "a", "c.png", "B.png", "a.png" })]
+    public async Task GetEntriesAsync_SortsByNameIgnoringCase(EntrySortDirection direction, string[] expected)
     {
         foreach (var name in new[] { "c", "a", "B" })
         {
             Source.AddFolder(RootId, name);
             Source.AddFile(RootId, name + ".png");
         }
-        var root = await OpenRootAsync(new FileSystemOptions { SortField = SortField.FileName, SortOrder = sortOrder });
+        var root = await OpenRootAsync();
+        var options = new EntryOptions { SortField = EntrySortField.Name, SortDirection = direction };
 
-        Assert.Equal(expected, Names(await root.GetEntriesAsync()));
+        Assert.Equal(expected, Names(await root.GetEntriesAsync(options)));
     }
 
     [Theory]
-    [InlineData(SortOrder.Ascending, new[] { "old", "new", "old.png", "new.png" })]
-    [InlineData(SortOrder.Descending, new[] { "new", "old", "new.png", "old.png" })]
-    public async Task GetEntriesAsync_SortsByDate(SortOrder sortOrder, string[] expected)
+    [InlineData(EntrySortDirection.Ascending, new[] { "old", "new", "old.png", "same1.png", "same2.png", "new.png" })]
+    [InlineData(EntrySortDirection.Descending, new[] { "new", "old", "new.png", "same2.png", "same1.png", "old.png" })]
+    public async Task GetEntriesAsync_SortsByLastWriteTimeThenName(EntrySortDirection direction, string[] expected)
     {
         Source.AddFolder(RootId, "new", lastModified: 1_690_000_000_000);
         Source.AddFolder(RootId, "old", lastModified: 1_620_000_000_000);
         Source.AddFile(RootId, "new.png", lastModified: 1_690_000_000_000);
+        Source.AddFile(RootId, "same2.png", lastModified: 1_650_000_000_000);
         Source.AddFile(RootId, "old.png", lastModified: 1_620_000_000_000);
-        var root = await OpenRootAsync(new FileSystemOptions { SortField = SortField.FileDate, SortOrder = sortOrder });
+        Source.AddFile(RootId, "same1.png", lastModified: 1_650_000_000_000);
+        var root = await OpenRootAsync();
+        var options = new EntryOptions { SortField = EntrySortField.LastWriteTime, SortDirection = direction };
 
-        Assert.Equal(expected, Names(await root.GetEntriesAsync()));
+        Assert.Equal(expected, Names(await root.GetEntriesAsync(options)));
     }
 
     [Fact]
-    public async Task GetEntriesAsync_ExcludesHiddenEntriesByDefault()
+    public async Task GetEntriesAsync_IncludesHiddenEntriesByDefault()
     {
         Source.AddFile(RootId, "a.txt");
         Source.AddFile(RootId, ".a.txt");
@@ -89,22 +106,25 @@ public class DirectoryTests : AndroidSafTestBase
         Source.AddFolder(RootId, ".d");
         var root = await OpenRootAsync();
 
-        Assert.Equal(new[] { "d", "a.txt" }, Names(await root.GetEntriesAsync()));
+        Assert.Equal(new[] { ".d", "d", ".a.txt", "a.txt" }, Names(await root.GetEntriesAsync(ByName())));
     }
 
     [Theory]
     [InlineData(true, false, new[] { "d", ".a.txt", "a.txt" })]
     [InlineData(false, true, new[] { ".d", "d", "a.txt" })]
-    [InlineData(true, true, new[] { ".d", "d", ".a.txt", "a.txt" })]
-    public async Task GetEntriesAsync_IncludesHiddenEntriesWhenAsked(bool files, bool folders, string[] expected)
+    [InlineData(false, false, new[] { "d", "a.txt" })]
+    public async Task GetEntriesAsync_HiddenEntries_AreNamesStartingWithAPeriod(bool files, bool directories, string[] expected)
     {
         Source.AddFile(RootId, "a.txt");
         Source.AddFile(RootId, ".a.txt");
         Source.AddFolder(RootId, "d");
         Source.AddFolder(RootId, ".d");
-        var root = await OpenRootAsync(new FileSystemOptions { IncludeHiddenFiles = files, IncludeHiddenFolders = folders });
+        var root = await OpenRootAsync();
+        var options = ByName();
+        options.IncludeHiddenFiles = files;
+        options.IncludeHiddenDirectories = directories;
 
-        Assert.Equal(expected, Names(await root.GetEntriesAsync()));
+        Assert.Equal(expected, Names(await root.GetEntriesAsync(options)));
     }
 
     [Fact]
@@ -115,21 +135,23 @@ public class DirectoryTests : AndroidSafTestBase
         Source.AddFile(RootId, "c.png");
         Source.AddFile(RootId, "README");
         Source.AddFolder(RootId, "photos");
-        var root = await OpenRootAsync(new FileSystemOptions { FileTypes = new[] { "jpeg" } });
+        var root = await OpenRootAsync();
+        var options = ByName();
+        options.FileTypes = new[] { "jpeg", "jpg" };
 
-        Assert.Equal(new[] { "photos", "a.jpeg", "b.JPG" }, Names(await root.GetEntriesAsync()));
+        Assert.Equal(new[] { "photos", "a.jpeg", "b.JPG" }, Names(await root.GetEntriesAsync(options)));
     }
 
     [Fact]
-    public async Task GetEntriesAsync_FileTypesInUpperCase_StillMatchJpg()
+    public async Task GetEntriesAsync_FileTypes_AddNoSynonyms()
     {
         Source.AddFile(RootId, "a.jpg");
-        var root = await OpenRootAsync(new FileSystemOptions { FileTypes = new[] { "JPEG" } });
+        Source.AddFile(RootId, "b.JPEG");
+        var root = await OpenRootAsync();
 
-        Assert.Equal(new[] { "a.jpg" }, Names(await root.GetEntriesAsync()));
+        Assert.Equal(new[] { "b.JPEG" }, Names(await root.GetEntriesAsync(new EntryOptions { FileTypes = new[] { "jpeg" } })));
     }
 
-    // Regression: no file types used to select no files at all.
     [Fact]
     public async Task GetEntriesAsync_NoFileTypes_IncludesEveryFileIncludingNamesWithoutAnExtension()
     {
@@ -138,7 +160,15 @@ public class DirectoryTests : AndroidSafTestBase
         Source.AddFile(RootId, "b.");
         var root = await OpenRootAsync();
 
-        Assert.Equal(new[] { "a.png", "b.", "README" }, Names(await root.GetEntriesAsync()));
+        Assert.Equal(new[] { "a.png", "b.", "README" }, Names(await root.GetEntriesAsync(ByName())));
+    }
+
+    [Fact]
+    public async Task GetEntriesAsync_InvalidOptions_ThrowArgumentException()
+    {
+        var root = await OpenRootAsync();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => root.GetEntriesAsync(new EntryOptions { SortField = (EntrySortField)99 }));
     }
 
     [Theory]
@@ -151,7 +181,7 @@ public class DirectoryTests : AndroidSafTestBase
         Source.AddFile(RootId, name);
         Source.AddFolder(RootId, name);
         Source.AddFile(RootId, "ok.txt");
-        var root = await OpenRootAsync(ShowHidden());
+        var root = await OpenRootAsync();
 
         Assert.Equal(new[] { "ok.txt" }, Names(await root.GetEntriesAsync()));
     }
@@ -165,10 +195,26 @@ public class DirectoryTests : AndroidSafTestBase
         Source.AddFolder(RootId, "d");
         var root = await OpenRootAsync();
 
-        var entries = (await root.GetEntriesAsync()).ToList();
+        var entries = (await root.GetEntriesAsync(ByName())).ToList();
 
         Assert.Equal(new[] { "D", "A.txt" }, Names(entries));
         Assert.Equal("first", await ((IFile)entries[1]).ReadAllTextAsync());
+    }
+
+    // The first in the provider's order is kept, whatever the sort order, so that every call
+    // and every lookup agree.
+    [Theory]
+    [InlineData(EntrySortDirection.Ascending)]
+    [InlineData(EntrySortDirection.Descending)]
+    public async Task GetEntriesAsync_NamesDifferingOnlyInCase_KeepTheSameOneWhateverTheSort(EntrySortDirection direction)
+    {
+        Source.AddFile(RootId, "b.txt", "first");
+        Source.AddFile(RootId, "B.txt", "second");
+        var root = await OpenRootAsync();
+        var options = new EntryOptions { SortField = EntrySortField.Name, SortDirection = direction };
+
+        Assert.Equal(new[] { "b.txt" }, Names(await root.GetEntriesAsync(options)));
+        Assert.Equal("b.txt", (await root.GetFileAsync("B.TXT")).Name);
     }
 
     [Fact]
@@ -178,7 +224,7 @@ public class DirectoryTests : AndroidSafTestBase
         Source.AddFolder(RootId, "a");
         var root = await OpenRootAsync();
 
-        var entries = (await root.GetEntriesAsync()).ToList();
+        var entries = (await root.GetEntriesAsync(ByName())).ToList();
 
         Assert.Equal(2, entries.Count);
         Assert.IsAssignableFrom<IDirectory>(entries[0]);
@@ -209,9 +255,9 @@ public class DirectoryTests : AndroidSafTestBase
         await Assert.ThrowsAsync<DirectoryNotFoundException>(() => dir.GetEntriesAsync());
     }
 
-    // The folder can disappear between the existence check and the listing.
+    // The folder can disappear between the existence check and reading its contents.
     [Fact]
-    public async Task GetEntriesAsync_ListingReportsTheFolderMissing_ThrowsDirectoryNotFoundExceptionForThePath()
+    public async Task GetEntriesAsync_ProviderReportsTheFolderMissing_ThrowsDirectoryNotFoundExceptionForThePath()
     {
         Source.AddFolder(RootId, "d");
         var root = await OpenRootAsync();
@@ -250,11 +296,11 @@ public class DirectoryTests : AndroidSafTestBase
         using var cts = new CancellationTokenSource();
         cts.Cancel();
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => root.GetEntriesAsync(cts.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => root.GetEntriesAsync(cancellationToken: cts.Token));
     }
 
     [Fact]
-    public async Task GetEntriesAsync_ListsAgainEachTime()
+    public async Task GetEntriesAsync_ReadsTheFolderAgainEachTime()
     {
         var root = await OpenRootAsync();
         Assert.Empty(await root.GetEntriesAsync());
@@ -308,24 +354,14 @@ public class DirectoryTests : AndroidSafTestBase
     }
 
     [Fact]
-    public async Task GetFileAsync_HiddenFile_IsFoundOnlyWhenIncluded()
+    public async Task Lookups_FindHiddenEntries()
     {
         Source.AddFile(RootId, ".a.txt");
+        Source.AddFolder(RootId, ".d");
+        var root = await OpenRootAsync();
 
-        var hiding = await OpenRootAsync();
-        var showing = await OpenRootAsync(new FileSystemOptions { IncludeHiddenFiles = true });
-
-        await Assert.ThrowsAsync<FileNotFoundException>(() => hiding.GetFileAsync(".a.txt"));
-        Assert.Equal("/.a.txt", (await showing.GetFileAsync(".a.txt")).Path);
-    }
-
-    [Fact]
-    public async Task GetFileAsync_FileOfAnExcludedType_ThrowsFileNotFoundException()
-    {
-        Source.AddFile(RootId, "a.gif");
-        var root = await OpenRootAsync(new FileSystemOptions { FileTypes = new[] { "png" } });
-
-        await Assert.ThrowsAsync<FileNotFoundException>(() => root.GetFileAsync("a.gif"));
+        Assert.Equal("/.a.txt", (await root.GetFileAsync(".a.txt")).Path);
+        Assert.Equal("/.d", (await root.GetDirectoryAsync(".d")).Path);
     }
 
     [Fact]
@@ -368,18 +404,6 @@ public class DirectoryTests : AndroidSafTestBase
         var root = await OpenRootAsync();
 
         await Assert.ThrowsAsync<DirectoryNotFoundException>(() => root.GetDirectoryAsync("a.txt"));
-    }
-
-    [Fact]
-    public async Task GetDirectoryAsync_HiddenDirectory_IsFoundOnlyWhenIncluded()
-    {
-        Source.AddFolder(RootId, ".d");
-
-        var hiding = await OpenRootAsync();
-        var showing = await OpenRootAsync(new FileSystemOptions { IncludeHiddenFolders = true });
-
-        await Assert.ThrowsAsync<DirectoryNotFoundException>(() => hiding.GetDirectoryAsync(".d"));
-        Assert.Equal("/.d", (await showing.GetDirectoryAsync(".d")).Path);
     }
 
     [Theory]
@@ -430,18 +454,37 @@ public class DirectoryTests : AndroidSafTestBase
         Source.AddFolder(RootId, "a.jpg.d");
         var root = await OpenRootAsync();
 
-        Assert.Equal(expected, Names(await root.EnumerateFilesAsync(pattern)));
+        Assert.Equal(expected, Names(await root.EnumerateFilesAsync(pattern, ByName())));
     }
 
     [Fact]
-    public async Task EnumerateFilesAsync_DefaultPattern_ListsEveryIncludedFile()
+    public async Task EnumerateFilesAsync_DefaultPattern_ListsEveryFile()
     {
         Source.AddFile(RootId, "a.txt");
         Source.AddFile(RootId, ".b.txt");
         Source.AddFolder(RootId, "d");
         var root = await OpenRootAsync();
 
-        Assert.Equal(new[] { "a.txt" }, Names(await root.EnumerateFilesAsync()));
+        Assert.Equal(new[] { ".b.txt", "a.txt" }, Names(await root.EnumerateFilesAsync(options: ByName())));
+    }
+
+    [Fact]
+    public async Task EnumerateFilesAsync_AppliesPatternAndOptionsTogether()
+    {
+        Source.AddFile(RootId, "a1.jpg", lastModified: 300);
+        Source.AddFile(RootId, "a2.jpg", lastModified: 100);
+        Source.AddFile(RootId, ".a3.jpg", lastModified: 200);
+        Source.AddFile(RootId, "a4.png", lastModified: 50);
+        Source.AddFile(RootId, "b1.jpg", lastModified: 10);
+        var root = await OpenRootAsync();
+        var options = new EntryOptions
+        {
+            FileTypes = new[] { "jpg" },
+            IncludeHiddenFiles = false,
+            SortField = EntrySortField.LastWriteTime,
+        };
+
+        Assert.Equal(new[] { "a2.jpg", "a1.jpg" }, Names(await root.EnumerateFilesAsync("a*", options)));
     }
 
     [Theory]
@@ -456,7 +499,18 @@ public class DirectoryTests : AndroidSafTestBase
         Source.AddFile(RootId, "2024");
         var root = await OpenRootAsync();
 
-        Assert.Equal(expected, Names(await root.EnumerateDirectoriesAsync(pattern)));
+        Assert.Equal(expected, Names(await root.EnumerateDirectoriesAsync(pattern, ByName())));
+    }
+
+    [Fact]
+    public async Task EnumerateDirectoriesAsync_FileTypesDontApply()
+    {
+        Source.AddFolder(RootId, "photos");
+        Source.AddFolder(RootId, ".cache");
+        var root = await OpenRootAsync();
+        var options = new EntryOptions { FileTypes = new[] { "jpg" }, IncludeHiddenDirectories = false };
+
+        Assert.Equal(new[] { "photos" }, Names(await root.EnumerateDirectoriesAsync(options: options)));
     }
 
     [Fact]

@@ -15,8 +15,8 @@ namespace Saraka.SystemIO
     /// The directory passed to <see cref="OpenAsync"/> becomes the root directory, "/". Entries
     /// outside it can't be reached through Saraka paths. Saraka paths always use "/"; they are
     /// mapped to the host's own separator when System.IO is called. Names may not contain "\"
-    /// on any platform, since it is a separator on Windows. Instances of this class and of the entries
-    /// it returns are not thread-safe.
+    /// on any platform, since it is a separator on Windows. Instances can be used from several
+    /// threads at once.
     /// </remarks>
     public sealed partial class FileSystem : IFileSystem
     {
@@ -31,13 +31,19 @@ namespace Saraka.SystemIO
         private static readonly char[] PatternSeparators = { '\\', '/' };
 
         /// <summary>
-        /// How host paths are compared. Used only to detect moving a directory into itself or one
-        /// of its descendants.
+        /// How names and paths are compared: ignoring case on Windows and macOS, the platform
+        /// defaults.
         /// </summary>
         private static readonly StringComparison PathComparison =
             RuntimeInformation.IsOSPlatform(OSPlatform.Windows) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
                 ? StringComparison.OrdinalIgnoreCase
                 : StringComparison.Ordinal;
+
+        /// <summary>
+        /// The <see cref="StringComparer"/> for <see cref="PathComparison"/>.
+        /// </summary>
+        private static readonly StringComparer PathComparer =
+            PathComparison == StringComparison.OrdinalIgnoreCase ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
         private static readonly EnumerationOptions ListingOptions = new EnumerationOptions
         {
@@ -51,7 +57,7 @@ namespace Saraka.SystemIO
 
         private readonly string _rootFullPath;
         private readonly DirectoryEntry _root;
-        private bool _disposed;
+        private volatile bool _disposed;
 
         /// <summary>
         /// Creates a file system rooted at a directory that is known to exist.
@@ -62,6 +68,8 @@ namespace Saraka.SystemIO
         {
             _rootFullPath = rootFullPath;
             CanWrite = canWrite;
+            var name = Path.GetFileName(rootFullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            DisplayName = name.Length > 0 ? name : rootFullPath;
             _root = new DirectoryEntry(this, RootPath);
         }
 
@@ -101,6 +109,54 @@ namespace Saraka.SystemIO
         /// <inheritdoc/>
         /// <remarks>This is the value passed to <see cref="OpenAsync"/> and doesn't change.</remarks>
         public bool CanWrite { get; }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Names ignore case on Windows and macOS, and are case-sensitive elsewhere. This follows
+        /// the platform's default, so it is wrong for a case-sensitive directory on Windows or a
+        /// case-sensitive volume on macOS.
+        /// </remarks>
+        public StringComparer NameComparer => PathComparer;
+
+        /// <inheritdoc/>
+        /// <remarks>The name of the root directory on disk, or its full path if it has no name (a drive root).</remarks>
+        public string DisplayName { get; }
+
+        /// <inheritdoc/>
+        /// <remarks>The path is checked on disk directly, without reading each directory along it.</remarks>
+        public Task<IDirectory> GetDirectoryAsync(string path, CancellationToken cancellationToken = default)
+        {
+            return Complete(() =>
+            {
+                ThrowIfDisposed();
+                var names = SplitPath(path, nameof(path));
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!Directory.Exists(ToFullPath(path)))
+                    throw new DirectoryNotFoundException($"There's no directory at '{path}'.");
+                return names.Length == 0 ? (IDirectory)_root : new DirectoryEntry(this, path);
+            });
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>The path is checked on disk directly, without reading each directory along it.</remarks>
+        public Task<IFile> GetFileAsync(string path, CancellationToken cancellationToken = default)
+        {
+            return Complete(() =>
+            {
+                ThrowIfDisposed();
+                var names = SplitPath(path, nameof(path));
+                if (names.Length == 0)
+                    throw new ArgumentException("\"/\" is the root directory, not a file.", nameof(path));
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!File.Exists(ToFullPath(path)))
+                {
+                    if (!Directory.Exists(ToFullPath(GetParentPath(path))))
+                        throw new DirectoryNotFoundException($"There's no directory at '{GetParentPath(path)}'.");
+                    throw new FileNotFoundException($"There's no file at '{path}'.");
+                }
+                return (IFile)new FileEntry(this, path);
+            });
+        }
 
         /// <summary>
         /// Closes the file system. Operations on it or its entries then throw
@@ -209,6 +265,33 @@ namespace Saraka.SystemIO
             if (name.IndexOfAny(InvalidNameChars) >= 0)
                 throw new ArgumentException(
                     "The name contains a path separator or a character that isn't valid in a file name.", paramName);
+        }
+
+        /// <summary>
+        /// Splits a path into names, checking that the path is valid and that each name is valid
+        /// in this file system.
+        /// </summary>
+        /// <param name="path">The path.</param>
+        /// <param name="paramName">The name of the parameter it was passed as.</param>
+        /// <returns>The names along the path.</returns>
+        private static string[] SplitPath(string? path, string paramName)
+        {
+            var names = SarakaPath.Split(path!, paramName);
+            foreach (var name in names)
+                ValidateName(name, paramName);
+            return names;
+        }
+
+        /// <summary>
+        /// Determines whether a name on disk can be presented as a Saraka name. On Linux and macOS
+        /// a name can contain "\", which <see cref="ValidateName"/> rejects, so such entries are
+        /// left out of directory contents to keep them consistent with lookups.
+        /// </summary>
+        /// <param name="name">The name on disk.</param>
+        /// <returns>True if the name is a valid Saraka name.</returns>
+        private static bool IsPresentableName(string name)
+        {
+            return name.IndexOfAny(InvalidNameChars) < 0;
         }
 
         /// <summary>

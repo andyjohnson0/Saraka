@@ -32,12 +32,11 @@ public abstract class AndroidSafTestBase : IAsyncLifetime
     /// <summary>
     /// Opens a file system over <see cref="Source"/>. It's disposed when the test ends.
     /// </summary>
-    /// <param name="options">The options, or null for the defaults.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>The file system.</returns>
-    internal async Task<FileSystem> OpenAsync(FileSystemOptions? options = null, CancellationToken cancellationToken = default)
+    internal async Task<FileSystem> OpenAsync(CancellationToken cancellationToken = default)
     {
-        var fileSystem = await FileSystem.OpenAsync(Source, options, cancellationToken);
+        var fileSystem = await FileSystem.OpenAsync(Source, cancellationToken);
         _opened.Add(fileSystem);
         return fileSystem;
     }
@@ -45,18 +44,17 @@ public abstract class AndroidSafTestBase : IAsyncLifetime
     /// <summary>
     /// Opens a file system over <see cref="Source"/> and returns its root.
     /// </summary>
-    /// <param name="options">The options, or null for the defaults.</param>
     /// <returns>The root directory.</returns>
-    internal async Task<IDirectory> OpenRootAsync(FileSystemOptions? options = null)
+    internal async Task<IDirectory> OpenRootAsync()
     {
-        return (await OpenAsync(options)).Root;
+        return (await OpenAsync()).Root;
     }
 
     /// <summary>
-    /// Creates options that include hidden files and folders.
+    /// Creates options that sort by name, ascending, so that results have a known order.
     /// </summary>
     /// <returns>The options.</returns>
-    internal static FileSystemOptions ShowHidden() => new() { IncludeHiddenFiles = true, IncludeHiddenFolders = true };
+    internal static EntryOptions ByName() => new() { SortField = EntrySortField.Name };
 
     /// <summary>
     /// Gets the names of entries, in order.

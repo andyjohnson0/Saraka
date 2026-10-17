@@ -155,7 +155,7 @@ public class FileSystemTests : ZipTestBase
         var cancelled = new CancellationToken(canceled: true);
         await CreateFileAsync(Root, "a.txt", "x");
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Root.GetEntriesAsync(cancelled));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Root.GetEntriesAsync(cancellationToken: cancelled));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Root.GetFileAsync("a.txt", cancelled));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Root.CreateDirectoryAsync("d", cancelled));
         Assert.DoesNotContain(await Root.GetEntriesAsync(), e => e.Name == "d");
@@ -186,5 +186,120 @@ public class FileSystemTests : ZipTestBase
         var names = (await Root.GetEntriesAsync()).Select(e => e.Path).OrderBy(p => p, StringComparer.Ordinal);
         Assert.Equal(new[] { "/d", "/empty" }, names);
         Assert.Equal("hello", await (await (await Root.GetDirectoryAsync("d")).GetFileAsync("a.txt")).ReadAllTextAsync());
+    }
+
+    [Fact]
+    public void NameComparer_IsCaseSensitive()
+    {
+        Assert.Same(StringComparer.Ordinal, Fs.NameComparer);
+        Assert.False(Fs.NameComparer.Equals("a.txt", "A.txt"));
+    }
+
+    [Fact]
+    public void DisplayName_IsTheZipFilesName()
+    {
+        Assert.Equal("test.zip", Fs.DisplayName);
+    }
+
+    [Fact]
+    public async Task FileSystem_IsTheEntrysFileSystem()
+    {
+        var dir = await Root.CreateDirectoryAsync("d");
+        var file = await CreateFileAsync(dir, "a.txt", "x");
+
+        Assert.Same(Fs, Root.FileSystem);
+        Assert.Same(Fs, dir.FileSystem);
+        Assert.Same(Fs, file.FileSystem);
+        Assert.Same(Fs, file.Parent!.FileSystem);
+    }
+
+    // Lookup by path
+
+    [Fact]
+    public async Task GetDirectoryAsync_Root_ReturnsTheRoot()
+    {
+        Assert.Equal("/", (await Fs.GetDirectoryAsync("/")).Path);
+    }
+
+    [Fact]
+    public async Task GetDirectoryAndFileAsync_NestedPaths_FindTheEntries()
+    {
+        await UseZipAsync(("a/b/c.txt", "hello"));
+
+        var dir = await Fs.GetDirectoryAsync("/a/b");
+        var file = await Fs.GetFileAsync("/a/b/c.txt");
+
+        Assert.Equal("/a/b", dir.Path);
+        Assert.Equal("/a/b/c.txt", file.Path);
+        Assert.Equal("hello", await file.ReadAllTextAsync());
+        Assert.Equal("/a", dir.Parent!.Path);
+    }
+
+    [Fact]
+    public async Task PathLookups_AreCaseSensitive()
+    {
+        await UseZipAsync(("Dir/File.txt", "x"));
+
+        await Assert.ThrowsAsync<DirectoryNotFoundException>(() => Fs.GetDirectoryAsync("/dir"));
+        await Assert.ThrowsAsync<FileNotFoundException>(() => Fs.GetFileAsync("/Dir/file.txt"));
+    }
+
+    [Fact]
+    public async Task GetDirectoryAsync_Missing_ThrowsDirectoryNotFoundException()
+    {
+        await UseZipAsync(("f.txt", "x"));
+
+        await Assert.ThrowsAsync<DirectoryNotFoundException>(() => Fs.GetDirectoryAsync("/missing"));
+        await Assert.ThrowsAsync<DirectoryNotFoundException>(() => Fs.GetDirectoryAsync("/f.txt"));
+    }
+
+    [Fact]
+    public async Task GetFileAsync_Missing_ThrowsFileOrDirectoryNotFoundException()
+    {
+        await UseZipAsync(("d/", null));
+
+        await Assert.ThrowsAsync<FileNotFoundException>(() => Fs.GetFileAsync("/d/missing.txt"));
+        await Assert.ThrowsAsync<FileNotFoundException>(() => Fs.GetFileAsync("/d"));
+        await Assert.ThrowsAsync<DirectoryNotFoundException>(() => Fs.GetFileAsync("/missing/a.txt"));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("a")]
+    [InlineData("/a/")]
+    [InlineData("/a//b")]
+    [InlineData("/a/../b")]
+    [InlineData("/a\\b")]
+    public async Task PathLookups_InvalidPath_ThrowArgumentException(string path)
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() => Fs.GetDirectoryAsync(path));
+        await Assert.ThrowsAsync<ArgumentException>(() => Fs.GetFileAsync(path));
+    }
+
+    [Fact]
+    public async Task GetFileAsync_Root_ThrowsArgumentException()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() => Fs.GetFileAsync("/"));
+    }
+
+    [Fact]
+    public async Task PathLookups_Null_ThrowArgumentNullExceptionThroughTheTask()
+    {
+        Task? task = null;
+
+        var thrown = Record.Exception(() => { task = Fs.GetFileAsync(null!); });
+
+        Assert.Null(thrown);
+        await Assert.ThrowsAsync<ArgumentNullException>(() => task!);
+        await Assert.ThrowsAsync<ArgumentNullException>(() => Fs.GetDirectoryAsync(null!));
+    }
+
+    [Fact]
+    public async Task PathLookups_AfterDispose_ThrowObjectDisposedException()
+    {
+        await Fs.DisposeAsync();
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => Fs.GetDirectoryAsync("/"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => Fs.GetFileAsync("/a.txt"));
     }
 }

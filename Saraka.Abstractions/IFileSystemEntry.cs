@@ -22,8 +22,8 @@ namespace Saraka.Abstractions
     /// <para>
     /// The interfaces carry nullable annotations, and null is used in only one place:
     /// <see cref="Parent"/> is null for the root directory. Arguments may not be null (a null
-    /// argument throws <see cref="ArgumentNullException"/>), and results are never null. Listings
-    /// return an empty sequence when there's nothing to list, and lookups throw rather than return
+    /// argument throws <see cref="ArgumentNullException"/>), and results are never null. Methods that
+    /// return a directory's entries return an empty sequence when there are none, and lookups throw rather than return
     /// null when nothing is found.
     /// </para>
     /// <para>
@@ -33,6 +33,13 @@ namespace Saraka.Abstractions
     /// when it is cancelled, and <see cref="IOException"/> or
     /// <see cref="UnauthorizedAccessException"/> when the underlying storage fails or denies
     /// access.
+    /// </para>
+    /// <para>
+    /// Implementations report failures only as the .NET exceptions this contract lists. An
+    /// exception from the platform underneath, such as an Android or Java exception, is wrapped
+    /// in the matching .NET exception, with the original as its
+    /// <see cref="Exception.InnerException"/>. This applies to operations and to the streams they
+    /// return.
     /// </para>
     /// <para>
     /// Some file systems can't store every value. An implementation may store times with less
@@ -59,6 +66,12 @@ namespace Saraka.Abstractions
         /// <see cref="Path"/> rather than by reference.
         /// </summary>
         IDirectory? Parent { get; }
+
+        /// <summary>
+        /// The file system this entry belongs to. Use it, for example, to tell apart entries with
+        /// the same path in different file systems.
+        /// </summary>
+        IFileSystem FileSystem { get; }
 
         /// <summary>
         /// Gets the entry's attributes.

@@ -14,7 +14,7 @@ namespace Saraka.SystemIO
         /// </summary>
         private abstract class Entry : IFileSystemEntry
         {
-            private string _path;
+            private volatile string _path;
 
             /// <summary>
             /// Creates an entry for a Saraka path.
@@ -51,6 +51,9 @@ namespace Saraka.SystemIO
             /// <inheritdoc/>
             /// <remarks>A new instance on each call, built from this entry's current path.</remarks>
             public IDirectory? Parent => IsRoot ? null : new DirectoryEntry(Owner, GetParentPath(_path));
+
+            /// <inheritdoc/>
+            public IFileSystem FileSystem => Owner;
 
             /// <inheritdoc/>
             public Task<FileAttributes> GetAttributesAsync(CancellationToken cancellationToken = default)

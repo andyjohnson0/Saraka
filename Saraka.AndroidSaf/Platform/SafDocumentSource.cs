@@ -23,6 +23,7 @@ namespace Saraka.AndroidSaf
             DocumentsContract.Document.ColumnMimeType,
             DocumentsContract.Document.ColumnLastModified,
             DocumentsContract.Document.ColumnSize,
+            DocumentsContract.Document.ColumnDisplayName,
         };
 
         private static readonly string[] ChildrenProjection =
@@ -56,8 +57,13 @@ namespace Saraka.AndroidSaf
 
         /// <inheritdoc/>
         /// <remarks>
-        /// A provider's query returns null for a document that doesn't exist, because
-        /// DocumentsProvider.query catches the provider's FileNotFoundException.
+        /// DocumentsProvider.query returns null when the provider throws FileNotFoundException.
+        /// But with a tree URI, DocumentsProvider first checks that the document is in the tree,
+        /// and Android's local storage provider fails that check with an
+        /// IllegalArgumentException ("Failed to determine if ... is child of ...") when the
+        /// document is missing. That becomes an <see cref="IOException"/> here, and
+        /// <see cref="FileSystem"/> checks the parent folder to tell a missing document apart.
+        /// The same check runs before reading a folder's children or opening a document.
         /// </remarks>
         public DocumentDetails? QueryDocument(string documentId)
         {
@@ -70,7 +76,8 @@ namespace Saraka.AndroidSaf
                 return new DocumentDetails(
                     IsDirectory: cursor.GetString(0) == DocumentsContract.Document.MimeTypeDir,
                     LastModified: cursor.IsNull(1) ? null : cursor.GetLong(1),
-                    Size: cursor.IsNull(2) ? null : cursor.GetLong(2));
+                    Size: cursor.IsNull(2) ? null : cursor.GetLong(2),
+                    DisplayName: cursor.GetString(3));
             });
         }
 
@@ -148,7 +155,7 @@ namespace Saraka.AndroidSaf
         }
 
         /// <summary>
-        /// Reads a folder listing from a cursor over <see cref="ChildrenProjection"/>. Documents
+        /// Reads a folder's children from a cursor over <see cref="ChildrenProjection"/>. Documents
         /// without an ID are skipped, because they can't be opened.
         /// </summary>
         /// <param name="cursor">The cursor.</param>

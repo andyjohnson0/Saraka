@@ -14,15 +14,16 @@ Saraka means "directory" or "index" in Swahili.
 
 | Package               | Target framework  | Version | Contents |
 |-----------------------|-------------------|---------|----------|
-| `Saraka.Abstractions` | .NET Standard 2.1 | 0.1.0   | The interfaces. |
-| `Saraka.SystemIO`     | .NET Standard 2.1 | 0.1.0   | An implementation backed by a local directory, using System.IO. |
-| `Saraka.Zip`          | .NET Standard 2.1 | 0.1.0   | An implementation backed by a zip file, using System.IO.Compression. |
-| `Saraka.AndroidSaf`   | .NET 10 for Android | 0.1.0   | A read-only implementation backed by an Android Storage Access Framework document tree. |
+| `Saraka.Abstractions` | .NET Standard 2.1 | 0.2.0   | The interfaces. |
+| `Saraka.SystemIO`     | .NET Standard 2.1 | 0.2.0   | An implementation backed by a local directory, using System.IO. |
+| `Saraka.Zip`          | .NET Standard 2.1 | 0.2.0   | An implementation backed by a zip file, using System.IO.Compression. |
+| `Saraka.AndroidSaf`   | .NET 10 for Android | 0.2.0   | A read-only implementation backed by an Android Storage Access Framework document tree. |
 
 `Saraka.AndroidSaf` needs Android 13 (API level 33) or later.
 
-The solution also contains `Saraka.SystemIO.Tests`, `Saraka.Zip.Tests` and
-`Saraka.AndroidSaf.Tests`, xUnit test suites for the three implementations that target .NET 10.
+The solution also contains xUnit test suites that target .NET 10: `Saraka.Abstractions.Tests` for
+the shared helper, and `Saraka.SystemIO.Tests`, `Saraka.Zip.Tests` and `Saraka.AndroidSaf.Tests`
+for the three implementations.
 See [Testing](#testing).
 
 ## Interfaces
@@ -39,11 +40,31 @@ An open file system. Everything else is reached from its root directory.
 - `CanWrite`: `true` if the file system can be written to. This can change while the file system
   is open, so check it when you need it, not once up front. Write operations attempted while it is
   `false` throw `InvalidOperationException`.
+- `NameComparer`: a `StringComparer` saying how the file system compares names, and so paths, for
+  example whether case matters. Lookups and search patterns use it. Use it whenever you compare
+  names or paths from the file system.
+- `DisplayName`: a name people can recognise, such as the name of the folder or zip file behind
+  the file system. It's for display only and isn't part of any path. It may be empty.
+- `GetDirectoryAsync(path)` / `GetFileAsync(path)`: get an entry by its absolute path, such as
+  `/data/photos/img1.jpg`. `/` is the root directory.
+  - Names along the path are compared with `NameComparer`, and lookups ignore `EntryOptions`.
+  - A missing file gives `FileNotFoundException`. A missing directory, including one along the
+    path, gives `DirectoryNotFoundException`.
+  - `SarakaPath.Split` checks a path's syntax and splits it into names.
 
 Always dispose the file system with `await using` or `DisposeAsync` when you've finished with
 it. Some implementations, such as `Saraka.Zip`, only write changes to storage at that point. After
-that, operations on it and its entries throw `ObjectDisposedException`. Whether streams that are
-already open stay usable depends on the implementation.
+that, operations on it and its entries throw `ObjectDisposedException`. Streams opened for reading
+stay usable until they're disposed. Whether streams opened for writing do depends on the
+implementation.
+
+**Threads.**
+- A file system and its entries can be used from several threads at once.
+- If one thread renames or moves an entry while another uses the same instance, the other sees
+  either the old location or the new one.
+- A single stream isn't safe to use from several threads at once.
+- No operation needs the calling thread's synchronization context to finish, so blocking on a
+  returned task (for example with `GetAwaiter().GetResult()` on a worker thread) doesn't deadlock.
 
 ### `IFileSystemEntry`
 
@@ -55,6 +76,8 @@ tell them apart with a type check or pattern match.
   root directory's path is `/`.
 - `Parent`: the containing directory, or `null` for the root. Implementations may return a new
   instance each time, so compare entries by `Path`, not by reference.
+- `FileSystem`: the file system the entry belongs to. Entries from different file systems can have
+  the same path.
 - `GetAttributesAsync` / `SetAttributesAsync`: read or set the `FileAttributes`.
 - `GetCreationTimeUtcAsync` / `SetCreationTimeUtcAsync`
 - `GetLastWriteTimeUtcAsync` / `SetLastWriteTimeUtcAsync`
@@ -63,10 +86,12 @@ tell them apart with a type check or pattern match.
 
 ### `IDirectory : IFileSystemEntry`
 
-- `GetEntriesAsync()`: lists the files and subdirectories directly inside this directory.
+- `GetEntriesAsync(options = null)`: lists the files and subdirectories directly inside this
+  directory.
 - `GetDirectoryAsync(name)` / `GetFileAsync(name)`: get a direct child by name.
-- `EnumerateFilesAsync(searchPattern = "*")` / `EnumerateDirectoriesAsync(searchPattern = "*")`:
-  list direct children whose names match a pattern.
+- `EnumerateFilesAsync(searchPattern = "*", options = null)` /
+  `EnumerateDirectoriesAsync(searchPattern = "*", options = null)`: list direct children whose
+  names match a pattern.
 - `CreateDirectoryAsync(name)`: creates an empty subdirectory.
 - `CreateFileAsync(name)`: creates an empty file.
 - `CreateFileAsync(name, Stream content)`: creates a file, copying `content` from its current
@@ -78,9 +103,38 @@ tell them apart with a type check or pattern match.
 `CreateDirectoryAsync` and the `CreateFileAsync` overloads fail if an entry with that name already
 exists. They never overwrite or truncate an existing file.
 
-Listings return entries in no particular order and include every entry, hidden and system entries
-included. In a search pattern, `*` matches zero or more characters and `?` matches exactly one.
-Whether matching is case-sensitive depends on the file system.
+Without options, `GetEntriesAsync`, `EnumerateFilesAsync` and `EnumerateDirectoriesAsync` return
+every entry, hidden and system entries included, in no particular order. In a search pattern, `*`
+matches zero or more characters and `?` matches exactly one. Whether matching is case-sensitive
+follows the file system's `NameComparer`.
+
+**`EntryOptions`** filter and sort the entries for a single call. Lookups by name ignore them.
+- `FileTypes`: file name extensions without the period, such as `"jpeg"`. A file is included if
+  its name ends with `.` and one of them, ignoring case. No synonyms are added, so pass both
+  `"jpeg"` and `"jpg"` if you want both. `null`, the default, includes every file. An empty
+  collection includes none. Directories aren't affected.
+- `IncludeHiddenFiles` / `IncludeHiddenDirectories`: whether to include hidden entries. Both are
+  `true` by default. An entry is hidden if its attributes include `Hidden`, and each
+  implementation says when that is.
+- `SortField`: `None` (the default, no particular order), `Name` or `LastWriteTime`.
+  - When sorting, directories come before files.
+  - Names compare ignoring case, then with case to break ties.
+  - Equal times are ordered by name.
+- `SortDirection`: `Ascending` (the default) or `Descending`. Descending is the exact reverse of
+  ascending, except that directories still come first.
+
+Implementations apply the options with the shared helper `EntrySelection.Apply`, so they all
+filter and sort in the same way.
+
+Apart from what the options exclude, the only entries left out are ones the file system can't
+present:
+- an entry whose stored name isn't a valid name, for example because it contains `/`;
+- an entry whose name is the same as an entry of the same kind earlier in the storage's own order,
+  as the file system's `NameComparer` compares names.
+
+A consumer can't find out about these through Saraka. They can't be found by name either, so the
+methods that return entries and the lookups by name always agree. Each implementation's section
+below says which stored names it can't present.
 
 ### `IFile : IFileSystemEntry`
 
@@ -102,8 +156,8 @@ Windows storage rejects `\` and other characters Windows doesn't allow in file n
 
 **Null.** `Saraka.Abstractions` has nullable annotations, and null appears in only one place:
 `Parent` is null for the root directory (`IDirectory? Parent`). Arguments may not be null, and a
-null argument throws `ArgumentNullException`. Results are never null: listings return an empty
-sequence when there's nothing to list, and `GetFileAsync` and `GetDirectoryAsync` throw rather than
+null argument throws `ArgumentNullException`. Results are never null: methods that return a directory's
+entries return an empty sequence when there are none, and `GetFileAsync` and `GetDirectoryAsync` throw rather than
 return null when nothing is found.
 
 **Exceptions.** Exceptions are reported through the returned task. Implementations follow these
@@ -120,6 +174,10 @@ conventions:
 | `OperationCanceledException` | The operation was cancelled. |
 | `ArgumentOutOfRangeException` | A time passed to `SetCreationTimeUtcAsync` or `SetLastWriteTimeUtcAsync` is outside the range the file system can store. |
 | `IOException` / `UnauthorizedAccessException` | The underlying storage failed or denied access. |
+
+Implementations report failures only as these .NET exceptions. An exception from the platform
+underneath, such as an Android or Java exception, is wrapped in the matching .NET exception, with
+the original as its `InnerException`. This applies to operations and to the streams they return.
 
 **Entries are locations, not handles.** An entry doesn't lock anything. Other code can change or
 remove the file or directory it refers to, and later operations on it then throw
@@ -194,14 +252,22 @@ await DumpAsync(fs.Root);
   `OpenAsync`.
 - Saraka paths use `/`. They're mapped to the host's own separator, so `/data/file.txt` is
   `C:\Photos\data\file.txt` on Windows. Entries outside the root directory can't be reached.
+- On Linux and macOS a name on disk can contain `\`. Such entries can't be Saraka names, so they're
+  left out of directory contents.
 - Names may not contain `\` or `/` on any platform, nor any character the host OS doesn't allow
   in file names.
 - Search patterns use simple matching, where `*` and `?` mean only what the contract says. That
   avoids the Windows quirk where `*.htm` also matches `.html` files. Case sensitivity follows the
   host file system.
-- Metadata operations, such as listings, attributes, times, create, delete and move, run
+- An entry is hidden if the file system gives it the Hidden attribute. On Windows that's the
+  attribute itself. On Linux and macOS, .NET reports a name starting with `.` as hidden.
+- `NameComparer` ignores case on Windows and macOS and is case-sensitive elsewhere: the platform
+  defaults. It's wrong for a directory that Windows has made case-sensitive, or a case-sensitive
+  macOS volume.
+- `DisplayName` is the root directory's name, or its full path for a drive root such as `C:\`.
+- Metadata operations, such as reading a directory's entries, attributes, times, create, delete and move, run
   synchronously and return completed tasks. Stream reads, writes and copies are truly asynchronous.
-- Instances aren't thread-safe.
+- Streams, including write streams, stay usable after the file system is disposed.
 
 Some behaviour depends on the host platform:
 
@@ -243,7 +309,9 @@ await using (var zip = await FileSystem.OpenAsync(@"C:\Photos\2026.zip", canWrit
 - Creating a directory adds an entry for it.
 - Removing the last thing from a directory adds an entry for that directory, so it doesn't
   disappear.
-- Names are case-sensitive, so `a.txt` and `A.txt` are different files.
+- Names are case-sensitive, so `a.txt` and `A.txt` are different files. `NameComparer` is
+  `StringComparer.Ordinal`.
+- `DisplayName` is the zip file's name, such as `photos.zip`.
 - `ArgumentException` is thrown for a name that is empty, `.` or `..`, or contains `/`, `\` or a
   control character. Other characters are allowed, including ones Windows doesn't allow in file
   names, such as `:` and `?`. A zip file made that way may not extract cleanly on Windows.
@@ -251,7 +319,7 @@ await using (var zip = await FileSystem.OpenAsync(@"C:\Photos\2026.zip", canWrit
   contain `.`, `..` or empty segments, or contain `\`.
 - If a zip file holds the same name twice, only the first entry is used.
 - If a zip file holds both a file `a` and entries inside a directory `a/`, both appear in
-  listings. `GetFileAsync("a")` finds the file and `GetDirectoryAsync("a")` finds the directory.
+  the directory's entries. `GetFileAsync("a")` finds the file and `GetDirectoryAsync("a")` finds the directory.
 
 **Where zip falls short of the contract.**
 - *Creation time.* Zip records only a last-write time. `GetCreationTimeUtcAsync` returns the
@@ -264,16 +332,26 @@ await using (var zip = await FileSystem.OpenAsync(@"C:\Photos\2026.zip", canWrit
   setting its time or attributes does nothing.
 - *Attributes.* Only the MS-DOS attributes (read-only, hidden, system, archive) are stored. Unix
   permission bits already in an entry are preserved.
+- *Hidden entries.* An entry is hidden if its MS-DOS Hidden bit is set. A name starting with `.`
+  doesn't make an entry hidden, and archives made by Unix tools don't set the bit. A directory
+  without its own entry is never hidden.
 - *Rename and move.* Zip has no rename, so these copy every affected entry to its new name and
   delete the original. That costs time in proportion to the size of the data.
-- *Streams.* On a read-only file system, `OpenReadAsync` streams straight from the zip file. On a
-  writable one, it returns a copy of the file's contents held in memory.
+- *Streams.*
+  - **Read-only file system:** `OpenReadAsync` streams straight from the zip file, through its own
+    file handle.
+  - **Writable file system:** it returns a copy of the file's contents held in memory.
+  - Either way, read streams can be used in parallel and stay usable after the file system is
+    disposed.
 - *Concurrent streams.* On a writable file system, while a file's write stream is open, anything
   else that reads that file's data throws `IOException`. That includes reading it, opening it
   again, renaming it and moving it.
-- *Disposal.* Streams still open when the file system is disposed can no longer be used.
+- *Disposal.* Write streams still open when the file system is disposed can no longer be used.
+- *Threads.* Every operation on the archive holds a lock, because `ZipArchive` isn't thread-safe,
+  so operations from different threads run one at a time. Creating a file from a stream holds the
+  lock while the content is copied.
 - *Asynchrony.* The methods are async, but most of the work behind them is synchronous. .NET
-  Standard 2.1 only exposes the synchronous zip APIs. So listing, lookup, attributes, times,
+  Standard 2.1 only exposes the synchronous zip APIs. So reading entries, lookup, attributes, times,
   creating, deleting, renaming and moving all run synchronously and return completed tasks.
   - Copying data to and from streams is truly asynchronous.
   - On .NET 10 and later, disposal uses the archive's asynchronous `DisposeAsync`, so saving
@@ -289,43 +367,43 @@ await using (var zip = await FileSystem.OpenAsync(@"C:\Photos\2026.zip", canWrit
 (`Intent.ActionOpenDocumentTree`). The app must hold permission to read the tree.
 
 ```csharp
+using Saraka.Abstractions;
 using Saraka.AndroidSaf;
 
-var options = new FileSystemOptions
+await using var fs = await FileSystem.OpenAsync(context, treeUri);
+var images = await fs.Root.EnumerateFilesAsync(options: new EntryOptions
 {
-    FileTypes = new[] { "jpeg", "png" },
-    SortField = SortField.FileDate,
-    SortOrder = SortOrder.Descending,
-};
-await using var fs = await FileSystem.OpenAsync(context, treeUri, options);
-await DumpAsync(fs.Root);
+    FileTypes = new[] { "jpeg", "jpg", "png" },
+    IncludeHiddenFiles = false,
+    SortField = EntrySortField.LastWriteTime,
+    SortDirection = EntrySortDirection.Descending,
+});
 ```
 
 - The tree's top-level folder is the root directory. Paths are built from the documents' display
   names, so the document `DCIM/Camera/img1.jpg` in the tree is `/DCIM/Camera/img1.jpg`.
+- `DisplayName` is the top-level folder's display name, such as `Pictures`, as the provider reports
+  it. The root's `Name` is still the empty string.
 - `CanWrite` is always `false`. Write operations throw `InvalidOperationException`.
 - `OpenAsync` throws `ArgumentException` if the URI isn't a tree URI, `DirectoryNotFoundException`
-  if the tree's folder doesn't exist, and `UnauthorizedAccessException` if the app can't read it.
+  if the provider reports that the tree's folder doesn't exist, and `UnauthorizedAccessException`
+  if the app can't read it. Android's local storage provider reports a missing tree folder as a
+  general failure, so it gives `IOException`.
 - Calls to the document provider block, so every operation runs on the thread pool. That keeps
   them off the UI thread.
+- The provider can't look up a path directly, so `GetDirectoryAsync(path)` and
+  `GetFileAsync(path)` read each folder along the path, from the root down. They don't make a
+  separate query to check that each folder exists.
 
-**Options.** `FileSystemOptions` is read once, when the file system is opened.
-- `SortField` and `SortOrder` set the order of listings: by name (ignoring case) or by
-  last-modified time, ascending or descending. Directories are listed before files.
-- `FileTypes` limits files to the given extensions, without the period (for example `"jpeg"`).
-  Matching ignores case, and `"jpeg"` also matches `.jpg` files. `null`, the default, includes
-  every file. Directories aren't affected.
-- `IncludeHiddenFiles` and `IncludeHiddenFolders` include entries whose names start with a
-  period. Both are `false` by default.
+- A document is hidden if its name starts with a period. `EntryOptions` use that to leave out
+  hidden files and directories.
+- Without `EntryOptions`, a directory's entries come in the provider's own order.
 
 **Where the SAF falls short of the contract.**
-- *Filtered listings.* The contract says listings include every entry. Here, entries the options
-  exclude don't appear in listings, and `GetFileAsync` and `GetDirectoryAsync` can't find them. By
-  default that includes hidden files and directories.
-- *Names.* Names are matched case-insensitively, in lookups and in search patterns. If a directory
-  has two files, or two directories, whose names differ only in case, only the first in listing
-  order is used. Entries whose display names can't be Saraka names, such as names containing `/`,
-  are ignored.
+- *Names.* Names are matched case-insensitively, in lookups and in search patterns, and
+  `NameComparer` is `StringComparer.OrdinalIgnoreCase`. If a directory has two files, or two
+  directories, whose names differ only in case, only the first in the provider's order is used.
+  Entries whose display names can't be Saraka names, such as names containing `/`, are ignored.
 - *Entries and document IDs.* An entry refers to its document by the provider's document ID. For
   the device's own storage, the ID is derived from the document's location, so an entry behaves as
   the contract says. Other providers, such as cloud storage, may keep the same ID when a document
@@ -343,10 +421,16 @@ await DumpAsync(fs.Root);
   - An Android `SecurityException`, for example when permission has been revoked, becomes
     `UnauthorizedAccessException`.
   - A missing document gives `FileNotFoundException` or `DirectoryNotFoundException`.
+    - Android's local storage provider doesn't say a document is missing. Its check that the
+      document is in the tree fails with a general error instead.
+    - So when a call about an entry fails, the file system reads the entry's parent folder. If
+      the document isn't there, the failure becomes the not-found exception, with the provider's
+      error as the inner exception.
+    - That costs a folder read only when something has already failed.
+    - The root has no parent to check, so a missing root on local storage gives `IOException`.
   - A cancellation by the provider gives `OperationCanceledException`.
   - Any other provider failure gives `IOException`.
 - *Disposal.* Streams that are open when the file system is disposed stay usable.
-- Instances aren't thread-safe.
 
 ## Building
 
@@ -359,6 +443,8 @@ or later. The test projects target .NET 10, so building the whole solution needs
 `Saraka.AndroidSaf` also needs the .NET `android` workload (`dotnet workload install android`).
 
 ## Testing
+
+`Saraka.Abstractions.Tests` tests `EntrySelection`, the shared helper that applies `EntryOptions`.
 
 `Saraka.SystemIO.Tests` and `Saraka.Zip.Tests` hold the unit tests for the SystemIO and Zip
 implementations. They use xUnit and run against real temporary directories and zip files.

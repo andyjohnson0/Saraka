@@ -29,19 +29,20 @@ namespace Saraka.Zip
             }
 
             /// <inheritdoc/>
-            public Task<IEnumerable<IFileSystemEntry>> GetEntriesAsync(CancellationToken cancellationToken = default)
+            public Task<IEnumerable<IFileSystemEntry>> GetEntriesAsync(EntryOptions? options = null, CancellationToken cancellationToken = default)
             {
-                return Complete(() =>
+                return Owner.Locked(() =>
                 {
                     PrepareRead(cancellationToken);
-                    return (IEnumerable<IFileSystemEntry>)ListChildren(files: true, directories: true, _ => true, cancellationToken);
+                    return (IEnumerable<IFileSystemEntry>)Select(
+                        ListChildren(files: true, directories: true, _ => true, cancellationToken), options);
                 });
             }
 
             /// <inheritdoc/>
             public Task<IDirectory> GetDirectoryAsync(string name, CancellationToken cancellationToken = default)
             {
-                return Complete(() =>
+                return Owner.Locked(() =>
                 {
                     var childName = PrepareLookup(name, cancellationToken);
                     if (!Owner.DirectoryExists(childName))
@@ -53,7 +54,7 @@ namespace Saraka.Zip
             /// <inheritdoc/>
             public Task<IFile> GetFileAsync(string name, CancellationToken cancellationToken = default)
             {
-                return Complete(() =>
+                return Owner.Locked(() =>
                 {
                     var childName = PrepareLookup(name, cancellationToken);
                     if (!Owner.FileExists(childName))
@@ -63,33 +64,54 @@ namespace Saraka.Zip
             }
 
             /// <inheritdoc/>
-            public Task<IEnumerable<IFile>> EnumerateFilesAsync(string searchPattern = "*", CancellationToken cancellationToken = default)
+            public Task<IEnumerable<IFile>> EnumerateFilesAsync(string searchPattern = "*", EntryOptions? options = null, CancellationToken cancellationToken = default)
             {
-                return Complete(() =>
+                return Owner.Locked(() =>
                 {
                     PrepareEnumeration(searchPattern, cancellationToken);
-                    return (IEnumerable<IFile>)ListChildren(files: true, directories: false, Matcher(searchPattern), cancellationToken)
+                    return (IEnumerable<IFile>)Select(
+                            ListChildren(files: true, directories: false, Matcher(searchPattern), cancellationToken), options)
                         .Cast<IFile>()
                         .ToList();
                 });
             }
 
             /// <inheritdoc/>
-            public Task<IEnumerable<IDirectory>> EnumerateDirectoriesAsync(string searchPattern = "*", CancellationToken cancellationToken = default)
+            public Task<IEnumerable<IDirectory>> EnumerateDirectoriesAsync(string searchPattern = "*", EntryOptions? options = null, CancellationToken cancellationToken = default)
             {
-                return Complete(() =>
+                return Owner.Locked(() =>
                 {
                     PrepareEnumeration(searchPattern, cancellationToken);
-                    return (IEnumerable<IDirectory>)ListChildren(files: false, directories: true, Matcher(searchPattern), cancellationToken)
+                    return (IEnumerable<IDirectory>)Select(
+                            ListChildren(files: false, directories: true, Matcher(searchPattern), cancellationToken), options)
                         .Cast<IDirectory>()
                         .ToList();
                 });
             }
 
+            /// <summary>
+            /// Applies the options to this directory's children. An entry is hidden if its MS-DOS
+            /// Hidden bit is set. A directory without its own entry is never hidden, and its time is
+            /// the latest time of anything inside it.
+            /// </summary>
+            /// <param name="children">The children, in the archive's order.</param>
+            /// <param name="options">The options, or null.</param>
+            /// <returns>The selected children.</returns>
+            private static List<IFileSystemEntry> Select(List<IFileSystemEntry> children, EntryOptions? options)
+            {
+                return EntrySelection.Apply(
+                    children,
+                    options,
+                    child => child.Name,
+                    child => child is IDirectory,
+                    child => (((Entry)child).ReadAttributes() & FileAttributes.Hidden) != 0,
+                    child => ((Entry)child).ReadLastWriteTimeUtc());
+            }
+
             /// <inheritdoc/>
             public Task<IDirectory> CreateDirectoryAsync(string name, CancellationToken cancellationToken = default)
             {
-                return Complete(() =>
+                return Owner.Locked(() =>
                 {
                     var childName = PrepareCreate(name, cancellationToken);
                     Owner._archive.CreateEntry(childName + Separator);
@@ -100,7 +122,7 @@ namespace Saraka.Zip
             /// <inheritdoc/>
             public Task<IFile> CreateFileAsync(string name, CancellationToken cancellationToken = default)
             {
-                return Complete(() =>
+                return Owner.Locked(() =>
                 {
                     var childName = PrepareCreate(name, cancellationToken);
                     Owner._archive.CreateEntry(childName);
@@ -109,37 +131,41 @@ namespace Saraka.Zip
             }
 
             /// <inheritdoc/>
-            public async Task<IFile> CreateFileAsync(string name, Stream content, CancellationToken cancellationToken = default)
+            /// <remarks>The archive stays locked while the content is copied in.</remarks>
+            public Task<IFile> CreateFileAsync(string name, Stream content, CancellationToken cancellationToken = default)
             {
-                Owner.ThrowIfDisposed();
-                ValidateName(name, nameof(name));
-                if (content == null)
-                    throw new ArgumentNullException(nameof(content));
-                if (!content.CanRead)
-                    throw new ArgumentException("The content stream can't be read.", nameof(content));
-                var childName = PrepareCreate(name, cancellationToken);
+                return Owner.LockedAsync<IFile>(async () =>
+                {
+                    Owner.ThrowIfDisposed();
+                    ValidateName(name, nameof(name));
+                    if (content == null)
+                        throw new ArgumentNullException(nameof(content));
+                    if (!content.CanRead)
+                        throw new ArgumentException("The content stream can't be read.", nameof(content));
+                    var childName = PrepareCreate(name, cancellationToken);
 
-                var entry = Owner._archive.CreateEntry(childName);
-                try
-                {
-                    using (var stream = entry.Open())
+                    var entry = Owner._archive.CreateEntry(childName);
+                    try
                     {
-                        await content.CopyToAsync(stream, CopyBufferSize, cancellationToken).ConfigureAwait(false);
+                        using (var stream = entry.Open())
+                        {
+                            await content.CopyToAsync(stream, CopyBufferSize, cancellationToken).ConfigureAwait(false);
+                        }
                     }
-                }
-                catch
-                {
-                    // Don't leave a partly written entry behind.
-                    entry.Delete();
-                    throw;
-                }
-                return new FileEntry(Owner, CombinePath(Path, name));
+                    catch
+                    {
+                        // Don't leave a partly written entry behind.
+                        entry.Delete();
+                        throw;
+                    }
+                    return new FileEntry(Owner, CombinePath(Path, name));
+                });
             }
 
             /// <inheritdoc/>
             public Task DeleteAsync(bool recursive = false, CancellationToken cancellationToken = default)
             {
-                return Complete(() =>
+                return Owner.Locked(() =>
                 {
                     Owner.ThrowIfDisposed();
                     cancellationToken.ThrowIfCancellationRequested();
@@ -286,7 +312,7 @@ namespace Saraka.Zip
             }
 
             /// <summary>
-            /// Makes the checks for listing children that match a pattern.
+            /// Makes the checks for enumerating children that match a pattern.
             /// </summary>
             /// <param name="searchPattern">The search pattern.</param>
             /// <param name="cancellationToken">A token to cancel the operation.</param>

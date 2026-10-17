@@ -14,7 +14,7 @@ namespace Saraka.Zip
         /// </summary>
         private abstract class Entry : IFileSystemEntry
         {
-            private string _path;
+            private volatile string _path;
 
             /// <summary>
             /// Creates an entry for a Saraka path.
@@ -51,9 +51,12 @@ namespace Saraka.Zip
             public IDirectory? Parent => IsRoot ? null : new DirectoryEntry(Owner, GetParentPath(_path));
 
             /// <inheritdoc/>
+            public IFileSystem FileSystem => Owner;
+
+            /// <inheritdoc/>
             public Task<FileAttributes> GetAttributesAsync(CancellationToken cancellationToken = default)
             {
-                return Complete(() =>
+                return Owner.Locked(() =>
                 {
                     PrepareRead(cancellationToken);
                     return GetAttributesCore();
@@ -70,7 +73,7 @@ namespace Saraka.Zip
             /// <inheritdoc/>
             public Task<DateTime> GetLastWriteTimeUtcAsync(CancellationToken cancellationToken = default)
             {
-                return Complete(() =>
+                return Owner.Locked(() =>
                 {
                     PrepareRead(cancellationToken);
                     return GetLastWriteTimeCore();
@@ -80,7 +83,7 @@ namespace Saraka.Zip
             /// <inheritdoc/>
             public Task SetAttributesAsync(FileAttributes attributes, CancellationToken cancellationToken = default)
             {
-                return Complete(() =>
+                return Owner.Locked(() =>
                 {
                     PrepareWrite(cancellationToken);
                     SetAttributesCore(attributes);
@@ -91,13 +94,13 @@ namespace Saraka.Zip
             /// <remarks>Zip can't record a creation time, so after the usual checks this does nothing.</remarks>
             public Task SetCreationTimeUtcAsync(DateTime creationTimeUtc, CancellationToken cancellationToken = default)
             {
-                return Complete(() => PrepareWrite(cancellationToken));
+                return Owner.Locked(() => PrepareWrite(cancellationToken));
             }
 
             /// <inheritdoc/>
             public Task SetLastWriteTimeUtcAsync(DateTime lastWriteTimeUtc, CancellationToken cancellationToken = default)
             {
-                return Complete(() =>
+                return Owner.Locked(() =>
                 {
                     PrepareWrite(cancellationToken);
                     SetLastWriteTimeCore(ToZipTime(lastWriteTimeUtc));
@@ -107,7 +110,7 @@ namespace Saraka.Zip
             /// <inheritdoc/>
             public Task RenameAsync(string newName, CancellationToken cancellationToken = default)
             {
-                return Complete(() =>
+                return Owner.Locked(() =>
                 {
                     Owner.ThrowIfDisposed();
                     ValidateName(newName, nameof(newName));
@@ -131,7 +134,7 @@ namespace Saraka.Zip
             /// <inheritdoc/>
             public Task MoveToAsync(IDirectory destination, CancellationToken cancellationToken = default)
             {
-                return Complete(() =>
+                return Owner.Locked(() =>
                 {
                     Owner.ThrowIfDisposed();
                     if (destination == null)
@@ -193,6 +196,20 @@ namespace Saraka.Zip
             /// </summary>
             /// <returns>The last-write time, in UTC.</returns>
             protected abstract DateTime GetLastWriteTimeCore();
+
+            /// <summary>
+            /// Reads this entry's attributes without the usual checks, for selecting a directory's
+            /// children. The entry must exist.
+            /// </summary>
+            /// <returns>The attributes.</returns>
+            public FileAttributes ReadAttributes() => GetAttributesCore();
+
+            /// <summary>
+            /// Reads this entry's last-write time without the usual checks, for selecting a
+            /// directory's children. The entry must exist.
+            /// </summary>
+            /// <returns>The last-write time, in UTC.</returns>
+            public DateTime ReadLastWriteTimeUtc() => GetLastWriteTimeCore();
 
             /// <summary>
             /// Stores this entry's last-write time, after the checks have been made.

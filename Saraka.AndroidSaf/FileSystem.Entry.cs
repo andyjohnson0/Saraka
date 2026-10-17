@@ -19,7 +19,7 @@ namespace Saraka.AndroidSaf
             private readonly DirectoryEntry? _parent;
 
             /// <summary>
-            /// Creates an entry for a document found in a listing.
+            /// Creates an entry for a document found in a folder.
             /// </summary>
             /// <param name="owner">The file system the entry belongs to.</param>
             /// <param name="parent">The directory the document was found in, or null for the root.</param>
@@ -57,6 +57,9 @@ namespace Saraka.AndroidSaf
 
             /// <inheritdoc/>
             public IDirectory? Parent => _parent;
+
+            /// <inheritdoc/>
+            public IFileSystem FileSystem => Owner;
 
             /// <inheritdoc/>
             public Task<FileAttributes> GetAttributesAsync(CancellationToken cancellationToken = default)
@@ -115,6 +118,17 @@ namespace Saraka.AndroidSaf
             }
 
             /// <summary>
+            /// Queries the provider for this entry's document, on the thread pool.
+            /// </summary>
+            /// <param name="cancellationToken">A token to cancel the operation.</param>
+            /// <returns>The document's details.</returns>
+            /// <exception cref="IOException">The document doesn't exist; see <see cref="NotFound"/>.</exception>
+            public Task<DocumentDetails> GetDetailsAsync(CancellationToken cancellationToken)
+            {
+                return RunAsync(GetExistingDetails, cancellationToken);
+            }
+
+            /// <summary>
             /// Returns the entry's path.
             /// </summary>
             /// <returns>The entry's Saraka path.</returns>
@@ -154,6 +168,13 @@ namespace Saraka.AndroidSaf
             /// Calls the document source, reporting a missing document as this entry's own
             /// not-found exception.
             /// </summary>
+            /// <remarks>
+            /// Android's local storage provider checks that a document is inside the tree before
+            /// every call, and that check fails with an IllegalArgumentException (an
+            /// <see cref="IOException"/> here) when the document is missing. So after an
+            /// <see cref="IOException"/>, <see cref="IsMissing"/> checks the parent folder to tell
+            /// a missing document from other failures. That costs nothing unless a call fails.
+            /// </remarks>
             /// <typeparam name="T">The call's result type.</typeparam>
             /// <param name="call">The call to make.</param>
             /// <returns>The call's result.</returns>
@@ -168,6 +189,10 @@ namespace Saraka.AndroidSaf
                     throw NotFound(ex);
                 }
                 catch (DirectoryNotFoundException ex)
+                {
+                    throw NotFound(ex);
+                }
+                catch (IOException ex) when (IsMissing())
                 {
                     throw NotFound(ex);
                 }
@@ -192,6 +217,36 @@ namespace Saraka.AndroidSaf
                 catch (DirectoryNotFoundException ex)
                 {
                     throw NotFound(ex);
+                }
+                catch (IOException ex) when (IsMissing())
+                {
+                    throw NotFound(ex);
+                }
+            }
+
+            /// <summary>
+            /// Determines, after a provider call has failed, whether this entry's document is
+            /// missing. It reads the parent folder's children and looks for this document. If the
+            /// parent can't be read, the document counts as missing if the parent is. The root has no
+            /// parent, so this can't tell whether it is missing.
+            /// </summary>
+            /// <returns>True if the document is no longer in its folder, as the same kind of entry.</returns>
+            private bool IsMissing()
+            {
+                if (_parent == null)
+                    return false;
+                try
+                {
+                    return !Owner._source.ListChildren(_parent.DocumentId)
+                        .Any(child => child.DocumentId == DocumentId && child.IsDirectory == IsDirectory);
+                }
+                catch (FileNotFoundException)
+                {
+                    return true;
+                }
+                catch (IOException)
+                {
+                    return ((Entry)_parent).IsMissing();
                 }
             }
 

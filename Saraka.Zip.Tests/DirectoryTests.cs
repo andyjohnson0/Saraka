@@ -432,4 +432,66 @@ public class DirectoryTests : ZipTestBase
 
         await Assert.ThrowsAsync<DirectoryNotFoundException>(() => dir.DeleteAsync());
     }
+
+    // EntryOptions
+
+    [Fact]
+    public async Task EntryOptions_HiddenMeansTheDosHiddenBit()
+    {
+        var hidden = await CreateFileAsync(Root, "hidden.txt", "x");
+        await hidden.SetAttributesAsync(FileAttributes.Hidden);
+        await CreateFileAsync(Root, ".dotted.txt", "x");
+        var hiddenDir = await Root.CreateDirectoryAsync("hidden-dir");
+        await hiddenDir.SetAttributesAsync(FileAttributes.Hidden);
+        await Root.CreateDirectoryAsync("dir");
+        var options = new EntryOptions
+        {
+            IncludeHiddenFiles = false,
+            IncludeHiddenDirectories = false,
+            SortField = EntrySortField.Name,
+        };
+
+        Assert.Equal(new[] { "dir", ".dotted.txt" }, (await Root.GetEntriesAsync(options)).Select(e => e.Name));
+    }
+
+    [Fact]
+    public async Task EntryOptions_ImplicitDirectory_IsNotHiddenAndSortsByTheLatestTimeInside()
+    {
+        await UseZipAsync(("implicit/a.txt", "x"), ("early.txt", "x"), ("late.txt", "x"));
+        await (await (await Root.GetDirectoryAsync("implicit")).GetFileAsync("a.txt"))
+            .SetLastWriteTimeUtcAsync(new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc));
+        await (await Root.GetFileAsync("early.txt")).SetLastWriteTimeUtcAsync(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        await (await Root.GetFileAsync("late.txt")).SetLastWriteTimeUtcAsync(new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc));
+        var options = new EntryOptions { IncludeHiddenDirectories = false, SortField = EntrySortField.LastWriteTime };
+
+        var entries = (await Root.GetEntriesAsync(options)).ToList();
+
+        Assert.Equal(new[] { "implicit", "early.txt", "late.txt" }, entries.Select(e => e.Name));
+        Assert.Equal(new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc), await entries[0].GetLastWriteTimeUtcAsync());
+    }
+
+    [Fact]
+    public async Task EntryOptions_ApplyToEnumerationsWithPatterns()
+    {
+        await UseZipAsync(("a2.jpg", "x"), ("a1.JPG", "x"), ("a3.png", "x"), ("b1.jpg", "x"), ("a-dir/", null));
+        var options = new EntryOptions { FileTypes = new[] { "jpg" }, SortField = EntrySortField.Name };
+
+        Assert.Equal(new[] { "a1.JPG", "a2.jpg" }, (await Root.EnumerateFilesAsync("a*", options)).Select(e => e.Name));
+        Assert.Equal(new[] { "a-dir" }, (await Root.EnumerateDirectoriesAsync("a*", options)).Select(e => e.Name));
+    }
+
+    [Fact]
+    public async Task EntryOptions_Invalid_ThrowArgumentException()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() => Root.GetEntriesAsync(new EntryOptions { SortField = (EntrySortField)99 }));
+    }
+
+    [Fact]
+    public async Task Lookups_IgnoreEntryOptionsAndFindHiddenFiles()
+    {
+        var file = await CreateFileAsync(Root, "hidden.txt", "x");
+        await file.SetAttributesAsync(FileAttributes.Hidden);
+
+        Assert.Equal("/hidden.txt", (await Root.GetFileAsync("hidden.txt")).Path);
+    }
 }
