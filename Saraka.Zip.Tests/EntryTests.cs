@@ -30,11 +30,11 @@ public class EntryTests : ZipTestBase
 
         Assert.Equal("c.txt", file.Name);
         Assert.Equal("/a/b/c.txt", file.Path);
-        Assert.Equal("/a/b", file.Parent.Path);
-        Assert.Equal("b", file.Parent.Name);
-        Assert.Equal("/a", file.Parent.Parent.Path);
-        Assert.Equal("/", file.Parent.Parent.Parent.Path);
-        Assert.Null(file.Parent.Parent.Parent.Parent);
+        Assert.Equal("/a/b", file.Parent!.Path);
+        Assert.Equal("b", file.Parent!.Name);
+        Assert.Equal("/a", file.Parent!.Parent!.Path);
+        Assert.Equal("/", file.Parent!.Parent!.Parent!.Path);
+        Assert.Null(file.Parent!.Parent!.Parent!.Parent);
     }
 
     [Fact]
@@ -44,7 +44,7 @@ public class EntryTests : ZipTestBase
         var file = await dir.CreateFileAsync("a.txt");
 
         Assert.NotSame(file.Parent, file.Parent);
-        Assert.Equal("/d/a.txt", Assert.Single(await file.Parent.GetEntriesAsync()).Path);
+        Assert.Equal("/d/a.txt", Assert.Single(await file.Parent!.GetEntriesAsync()).Path);
     }
 
     [Fact]
@@ -490,7 +490,7 @@ public class EntryTests : ZipTestBase
         await file.MoveToAsync(dir);
 
         Assert.Equal("/d/a.txt", file.Path);
-        Assert.Equal("/d", file.Parent.Path);
+        Assert.Equal("/d", file.Parent!.Path);
         var entries = await ReadZipAsync();
         Assert.Equal(new[] { "d/", "d/a.txt" }, entries.Keys.OrderBy(k => k, StringComparer.Ordinal));
         Assert.Equal("hello", entries["d/a.txt"]);

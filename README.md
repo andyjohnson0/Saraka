@@ -4,7 +4,9 @@ Saraka provides a set of async interfaces for browsing and editing an abstract f
 
 The `Saraka.Abstractions` package defines the interfaces only. Implementations decide what the
 file system is backed by and how it is opened. `Saraka.SystemIO` is a reference implementation
-over a local filesystem directory hierarchy, and `Saraka.Zip` presents a zip file as a file system.
+over a local filesystem directory hierarchy, `Saraka.Zip` presents a zip file as a file system, and
+`Saraka.AndroidSaf` presents a folder from the Android Storage Access Framework as a read-only file
+system.
 
 Saraka means "directory" or "index" in Swahili.
 
@@ -15,12 +17,13 @@ Saraka means "directory" or "index" in Swahili.
 | `Saraka.Abstractions` | .NET Standard 2.1 | 0.1.0   | The interfaces. |
 | `Saraka.SystemIO`     | .NET Standard 2.1 | 0.1.0   | An implementation backed by a local directory, using System.IO. |
 | `Saraka.Zip`          | .NET Standard 2.1 | 0.1.0   | An implementation backed by a zip file, using System.IO.Compression. |
+| `Saraka.AndroidSaf`   | .NET 10 for Android | 0.1.0   | A read-only implementation backed by an Android Storage Access Framework document tree. |
 
-Because they target .NET Standard 2.1, they work on .NET Core 3.0+ and .NET 5 and later. They do
-not support .NET Framework, which only implements .NET Standard up to 2.0.
+`Saraka.AndroidSaf` needs Android 13 (API level 33) or later.
 
-The solution also contains `Saraka.SystemIO.Tests` and `Saraka.Zip.Tests`, xUnit test suites for
-the two implementations that target .NET 10. See [Testing](#testing).
+The solution also contains `Saraka.SystemIO.Tests`, `Saraka.Zip.Tests` and
+`Saraka.AndroidSaf.Tests`, xUnit test suites for the three implementations that target .NET 10.
+See [Testing](#testing).
 
 ## Interfaces
 
@@ -96,6 +99,12 @@ The caller is responsible for disposing streams returned by `OpenReadAsync` and 
 Methods take bare names, never paths. A name is invalid if it is empty, contains `/`, is `.` or
 `..`, or is otherwise not allowed by the file system. For example, an implementation backed by
 Windows storage rejects `\` and other characters Windows doesn't allow in file names.
+
+**Null.** `Saraka.Abstractions` has nullable annotations, and null appears in only one place:
+`Parent` is null for the root directory (`IDirectory? Parent`). Arguments may not be null, and a
+null argument throws `ArgumentNullException`. Results are never null: listings return an empty
+sequence when there's nothing to list, and `GetFileAsync` and `GetDirectoryAsync` throw rather than
+return null when nothing is found.
 
 **Exceptions.** Exceptions are reported through the returned task. Implementations follow these
 conventions:
@@ -273,6 +282,72 @@ await using (var zip = await FileSystem.OpenAsync(@"C:\Photos\2026.zip", canWrit
     system, can block the calling thread. To avoid that on a UI thread, call them through
     `Task.Run`.
 
+## `Saraka.AndroidSaf`
+
+`Saraka.AndroidSaf.FileSystem` presents a document tree from the Android Storage Access Framework
+(SAF) as a read-only file system. Open it with the tree URI returned by the system folder picker
+(`Intent.ActionOpenDocumentTree`). The app must hold permission to read the tree.
+
+```csharp
+using Saraka.AndroidSaf;
+
+var options = new FileSystemOptions
+{
+    FileTypes = new[] { "jpeg", "png" },
+    SortField = SortField.FileDate,
+    SortOrder = SortOrder.Descending,
+};
+await using var fs = await FileSystem.OpenAsync(context, treeUri, options);
+await DumpAsync(fs.Root);
+```
+
+- The tree's top-level folder is the root directory. Paths are built from the documents' display
+  names, so the document `DCIM/Camera/img1.jpg` in the tree is `/DCIM/Camera/img1.jpg`.
+- `CanWrite` is always `false`. Write operations throw `InvalidOperationException`.
+- `OpenAsync` throws `ArgumentException` if the URI isn't a tree URI, `DirectoryNotFoundException`
+  if the tree's folder doesn't exist, and `UnauthorizedAccessException` if the app can't read it.
+- Calls to the document provider block, so every operation runs on the thread pool. That keeps
+  them off the UI thread.
+
+**Options.** `FileSystemOptions` is read once, when the file system is opened.
+- `SortField` and `SortOrder` set the order of listings: by name (ignoring case) or by
+  last-modified time, ascending or descending. Directories are listed before files.
+- `FileTypes` limits files to the given extensions, without the period (for example `"jpeg"`).
+  Matching ignores case, and `"jpeg"` also matches `.jpg` files. `null`, the default, includes
+  every file. Directories aren't affected.
+- `IncludeHiddenFiles` and `IncludeHiddenFolders` include entries whose names start with a
+  period. Both are `false` by default.
+
+**Where the SAF falls short of the contract.**
+- *Filtered listings.* The contract says listings include every entry. Here, entries the options
+  exclude don't appear in listings, and `GetFileAsync` and `GetDirectoryAsync` can't find them. By
+  default that includes hidden files and directories.
+- *Names.* Names are matched case-insensitively, in lookups and in search patterns. If a directory
+  has two files, or two directories, whose names differ only in case, only the first in listing
+  order is used. Entries whose display names can't be Saraka names, such as names containing `/`,
+  are ignored.
+- *Entries and document IDs.* An entry refers to its document by the provider's document ID. For
+  the device's own storage, the ID is derived from the document's location, so an entry behaves as
+  the contract says. Other providers, such as cloud storage, may keep the same ID when a document
+  is renamed or moved, and an entry then goes on referring to that document at its new location.
+- *Times.* The SAF records only a last-modified time. `GetCreationTimeUtcAsync` returns the
+  last-modified time. A document whose provider doesn't record a time reports the Unix epoch
+  (1970-01-01).
+- *Attributes.* An entry is `Directory` or `Normal`, plus `Hidden` if its name starts with a
+  period.
+- *Length.* If the provider doesn't report a file's size, `GetLengthAsync` reads the whole file to
+  find it.
+- *Errors.* Android and Java exceptions are always wrapped in .NET exceptions, with the original
+  as the inner exception. That applies to operations and to reading streams returned by
+  `OpenReadAsync`.
+  - An Android `SecurityException`, for example when permission has been revoked, becomes
+    `UnauthorizedAccessException`.
+  - A missing document gives `FileNotFoundException` or `DirectoryNotFoundException`.
+  - A cancellation by the provider gives `OperationCanceledException`.
+  - Any other provider failure gives `IOException`.
+- *Disposal.* Streams that are open when the file system is disposed stay usable.
+- Instances aren't thread-safe.
+
 ## Building
 
 ```bash
@@ -281,11 +356,19 @@ dotnet build Saraka.slnx
 
 The `.slnx` solution format needs the .NET 9 SDK (9.0.200 or later) or Visual Studio 2022 17.13
 or later. The test projects target .NET 10, so building the whole solution needs the .NET 10 SDK.
+`Saraka.AndroidSaf` also needs the .NET `android` workload (`dotnet workload install android`).
 
 ## Testing
 
-`Saraka.SystemIO.Tests` and `Saraka.Zip.Tests` hold the unit tests for the two implementations.
-They use xUnit and run against real temporary directories and zip files. Run them with:
+`Saraka.SystemIO.Tests` and `Saraka.Zip.Tests` hold the unit tests for the SystemIO and Zip
+implementations. They use xUnit and run against real temporary directories and zip files.
+
+`Saraka.AndroidSaf.Tests` runs on Windows, not Android. All of `Saraka.AndroidSaf` except its
+`Platform` folder is plain C#, and the test project compiles those files in directly. Instead of the
+content resolver, the tests use an in-memory document provider. The code in `Platform`, which calls
+the Android document APIs, isn't covered by these tests.
+
+Run all the tests with:
 
 ```bash
 dotnet test Saraka.slnx
