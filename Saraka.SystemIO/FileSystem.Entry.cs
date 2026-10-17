@@ -53,6 +53,9 @@ namespace Saraka.SystemIO
             public IDirectory? Parent => IsRoot ? null : new DirectoryEntry(Owner, GetParentPath(_path));
 
             /// <inheritdoc/>
+            public IFileSystem FileSystem => Owner;
+
+            /// <inheritdoc/>
             public Task<FileAttributes> GetAttributesAsync(CancellationToken cancellationToken = default)
             {
                 return Complete(() => GetExistingInfo(cancellationToken).Attributes);

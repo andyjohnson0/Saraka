@@ -191,4 +191,35 @@ public class FileSystemTests : AndroidSafTestBase
         using var reader = new StreamReader(stream);
         Assert.Equal("hello", await reader.ReadToEndAsync());
     }
+
+    [Fact]
+    public async Task NameComparer_IgnoresCase()
+    {
+        var fs = await OpenAsync();
+
+        Assert.Same(StringComparer.OrdinalIgnoreCase, fs.NameComparer);
+    }
+
+    [Fact]
+    public async Task DisplayName_IsTheRootFoldersDisplayName()
+    {
+        var fs = await OpenAsync();
+
+        Assert.Equal(FakeDocumentSource.RootName, fs.DisplayName);
+        Assert.Equal(string.Empty, fs.Root.Name);
+    }
+
+    [Fact]
+    public async Task FileSystem_IsTheEntrysFileSystem()
+    {
+        var dirId = Source.AddFolder(RootId, "d");
+        Source.AddFile(dirId, "a.txt");
+        var fs = await OpenAsync();
+        var dir = await fs.Root.GetDirectoryAsync("d");
+        var file = await dir.GetFileAsync("a.txt");
+
+        Assert.Same(fs, fs.Root.FileSystem);
+        Assert.Same(fs, dir.FileSystem);
+        Assert.Same(fs, file.FileSystem);
+    }
 }

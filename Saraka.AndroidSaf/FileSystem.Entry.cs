@@ -59,6 +59,9 @@ namespace Saraka.AndroidSaf
             public IDirectory? Parent => _parent;
 
             /// <inheritdoc/>
+            public IFileSystem FileSystem => Owner;
+
+            /// <inheritdoc/>
             public Task<FileAttributes> GetAttributesAsync(CancellationToken cancellationToken = default)
             {
                 return RunAsync(() =>
@@ -112,6 +115,17 @@ namespace Saraka.AndroidSaf
             public Task MoveToAsync(IDirectory destination, CancellationToken cancellationToken = default)
             {
                 return RejectWriteAsync(cancellationToken, () => ArgumentNullException.ThrowIfNull(destination));
+            }
+
+            /// <summary>
+            /// Queries the provider for this entry's document, on the thread pool.
+            /// </summary>
+            /// <param name="cancellationToken">A token to cancel the operation.</param>
+            /// <returns>The document's details.</returns>
+            /// <exception cref="IOException">The document doesn't exist; see <see cref="NotFound"/>.</exception>
+            public Task<DocumentDetails> GetDetailsAsync(CancellationToken cancellationToken)
+            {
+                return RunAsync(GetExistingDetails, cancellationToken);
             }
 
             /// <summary>

@@ -21,13 +21,13 @@ namespace Saraka.Abstractions
     /// <see cref="EnumerateDirectoriesAsync"/> return entries in no particular order and include
     /// every entry, whatever its attributes, so hidden and system entries are included. In a
     /// search pattern, "*" matches zero or more characters and "?" matches exactly one. Whether
-    /// matching is case-sensitive depends on the file system.
+    /// matching is case-sensitive follows <see cref="IFileSystem.NameComparer"/>.
     /// </para>
     /// <para>
     /// The only entries left out are ones the file system can't present: an entry whose stored
     /// name isn't a valid name (for example, it contains "/"), and an entry whose name is the
-    /// same as an earlier entry of the same kind, as the file system compares names. A consumer
-    /// can't find out about these through Saraka. They can't be found by name either, so the
+    /// same as an earlier entry of the same kind, as <see cref="IFileSystem.NameComparer"/>
+    /// compares names. A consumer can't find out about these through Saraka. They can't be found by name either, so the
     /// methods that return entries and the lookups by name always agree. Each implementation
     /// documents which stored names it can't present.
     /// </para>

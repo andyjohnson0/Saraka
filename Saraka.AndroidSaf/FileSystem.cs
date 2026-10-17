@@ -97,6 +97,20 @@ namespace Saraka.AndroidSaf
         /// <remarks>This file system is read-only, so this is always false.</remarks>
         public bool CanWrite => false;
 
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Names are compared ignoring case (<see cref="StringComparer.OrdinalIgnoreCase"/>), as the
+        /// device's own storage does.
+        /// </remarks>
+        public StringComparer NameComparer => StringComparer.OrdinalIgnoreCase;
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// The display name of the tree's top-level folder, such as "Pictures", as the provider
+        /// reported it when the file system was opened.
+        /// </remarks>
+        public string DisplayName { get; private set; } = string.Empty;
+
         /// <summary>
         /// Closes the file system. Operations on it or its entries then throw
         /// <see cref="ObjectDisposedException"/>. Streams that are already open are not closed.
@@ -127,8 +141,9 @@ namespace Saraka.AndroidSaf
             ValidateOptions(options, nameof(options));
 
             var fileSystem = new FileSystem(source, options);
-            // Reading the root's attributes checks that it exists, is a folder and can be read.
-            await fileSystem._root.GetAttributesAsync(cancellationToken).ConfigureAwait(false);
+            // Reading the root's details checks that it exists, is a folder and can be read.
+            var details = await fileSystem._root.GetDetailsAsync(cancellationToken).ConfigureAwait(false);
+            fileSystem.DisplayName = details.DisplayName ?? string.Empty;
             return fileSystem;
         }
 

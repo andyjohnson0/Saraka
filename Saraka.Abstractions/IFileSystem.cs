@@ -30,5 +30,21 @@ namespace Saraka.Abstractions
         /// <see cref="InvalidOperationException"/>.
         /// </summary>
         bool CanWrite { get; }
+
+        /// <summary>
+        /// How this file system compares names, and so paths: for example, whether case matters.
+        /// Lookups by name and the rule for leaving out entries whose names are the same both use
+        /// it, and search patterns match with the same case sensitivity. Use it to compare names
+        /// and paths from this file system.
+        /// </summary>
+        StringComparer NameComparer { get; }
+
+        /// <summary>
+        /// A name for the file system that people can recognise, such as the name of the folder
+        /// or file it's backed by. It's for display only, and isn't part of any path: the root
+        /// directory's <see cref="IFileSystemEntry.Name"/> is still the empty string. It may be the
+        /// empty string if the file system has no suitable name.
+        /// </summary>
+        string DisplayName { get; }
     }
 }

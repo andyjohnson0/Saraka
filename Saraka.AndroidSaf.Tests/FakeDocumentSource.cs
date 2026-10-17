@@ -11,6 +11,11 @@ internal sealed class FakeDocumentSource : IDocumentSource
 {
     public const string RootId = "root";
 
+    /// <summary>
+    /// The display name of the root folder.
+    /// </summary>
+    public const string RootName = "Tree";
+
     private readonly Dictionary<string, Node> _nodes = new();
     private int _nextId;
 
@@ -19,7 +24,7 @@ internal sealed class FakeDocumentSource : IDocumentSource
     /// </summary>
     public FakeDocumentSource()
     {
-        _nodes[RootId] = new Node(RootId, parentId: null, string.Empty, isDirectory: true, lastModified: 0);
+        _nodes[RootId] = new Node(RootId, parentId: null, RootName, isDirectory: true, lastModified: 0);
     }
 
     /// <inheritdoc/>
@@ -121,7 +126,8 @@ internal sealed class FakeDocumentSource : IDocumentSource
         return new DocumentDetails(
             node.IsDirectory,
             node.LastModified,
-            node.IsDirectory || !node.ReportSize ? null : node.Content.Length);
+            node.IsDirectory || !node.ReportSize ? null : node.Content.Length,
+            node.Name);
     }
 
     /// <inheritdoc/>

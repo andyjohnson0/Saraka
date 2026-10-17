@@ -147,4 +147,40 @@ public class FileSystemTests : FileSystemTestBase
         Assert.Equal("/a/b/c.txt", file.Path);
         Assert.True(File.Exists(HostPath("a", "b", "c.txt")));
     }
+
+    [Fact]
+    public void NameComparer_IgnoresCaseOnlyOnWindowsAndMacOS()
+    {
+        var ignoresCase = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS();
+
+        Assert.Equal(ignoresCase, Fs.NameComparer.Equals("a.txt", "A.TXT"));
+        Assert.True(Fs.NameComparer.Equals("a.txt", "a.txt"));
+    }
+
+    [Fact]
+    public void DisplayName_IsTheRootDirectorysName()
+    {
+        Assert.Equal(Path.GetFileName(RootPath), Fs.DisplayName);
+    }
+
+    [Fact]
+    public async Task DisplayName_ForADriveRoot_IsTheFullPath()
+    {
+        var driveRoot = Path.GetPathRoot(RootPath)!;
+        await using var fs = await FileSystem.OpenAsync(driveRoot, canWrite: false);
+
+        Assert.Equal(driveRoot, fs.DisplayName);
+    }
+
+    [Fact]
+    public async Task FileSystem_IsTheEntrysFileSystem()
+    {
+        var dir = await Root.CreateDirectoryAsync("d");
+        var file = await CreateFileAsync(dir, "a.txt", "x");
+
+        Assert.Same(Fs, Root.FileSystem);
+        Assert.Same(Fs, dir.FileSystem);
+        Assert.Same(Fs, file.FileSystem);
+        Assert.Same(Fs, file.Parent!.FileSystem);
+    }
 }

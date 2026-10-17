@@ -31,13 +31,19 @@ namespace Saraka.SystemIO
         private static readonly char[] PatternSeparators = { '\\', '/' };
 
         /// <summary>
-        /// How host paths are compared. Used only to detect moving a directory into itself or one
-        /// of its descendants.
+        /// How names and paths are compared: ignoring case on Windows and macOS, the platform
+        /// defaults.
         /// </summary>
         private static readonly StringComparison PathComparison =
             RuntimeInformation.IsOSPlatform(OSPlatform.Windows) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
                 ? StringComparison.OrdinalIgnoreCase
                 : StringComparison.Ordinal;
+
+        /// <summary>
+        /// The <see cref="StringComparer"/> for <see cref="PathComparison"/>.
+        /// </summary>
+        private static readonly StringComparer PathComparer =
+            PathComparison == StringComparison.OrdinalIgnoreCase ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
         private static readonly EnumerationOptions ListingOptions = new EnumerationOptions
         {
@@ -62,6 +68,8 @@ namespace Saraka.SystemIO
         {
             _rootFullPath = rootFullPath;
             CanWrite = canWrite;
+            var name = Path.GetFileName(rootFullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            DisplayName = name.Length > 0 ? name : rootFullPath;
             _root = new DirectoryEntry(this, RootPath);
         }
 
@@ -101,6 +109,18 @@ namespace Saraka.SystemIO
         /// <inheritdoc/>
         /// <remarks>This is the value passed to <see cref="OpenAsync"/> and doesn't change.</remarks>
         public bool CanWrite { get; }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Names ignore case on Windows and macOS, and are case-sensitive elsewhere. This follows
+        /// the platform's default, so it is wrong for a case-sensitive directory on Windows or a
+        /// case-sensitive volume on macOS.
+        /// </remarks>
+        public StringComparer NameComparer => PathComparer;
+
+        /// <inheritdoc/>
+        /// <remarks>The name of the root directory on disk, or its full path if it has no name (a drive root).</remarks>
+        public string DisplayName { get; }
 
         /// <summary>
         /// Closes the file system. Operations on it or its entries then throw

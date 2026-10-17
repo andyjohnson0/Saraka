@@ -39,6 +39,11 @@ An open file system. Everything else is reached from its root directory.
 - `CanWrite`: `true` if the file system can be written to. This can change while the file system
   is open, so check it when you need it, not once up front. Write operations attempted while it is
   `false` throw `InvalidOperationException`.
+- `NameComparer`: a `StringComparer` saying how the file system compares names, and so paths, for
+  example whether case matters. Lookups and search patterns use it. Use it whenever you compare
+  names or paths from the file system.
+- `DisplayName`: a name people can recognise, such as the name of the folder or zip file behind
+  the file system. It's for display only and isn't part of any path. It may be empty.
 
 Always dispose the file system with `await using` or `DisposeAsync` when you've finished with
 it. Some implementations, such as `Saraka.Zip`, only write changes to storage at that point. After
@@ -55,6 +60,8 @@ tell them apart with a type check or pattern match.
   root directory's path is `/`.
 - `Parent`: the containing directory, or `null` for the root. Implementations may return a new
   instance each time, so compare entries by `Path`, not by reference.
+- `FileSystem`: the file system the entry belongs to. Entries from different file systems can have
+  the same path.
 - `GetAttributesAsync` / `SetAttributesAsync`: read or set the `FileAttributes`.
 - `GetCreationTimeUtcAsync` / `SetCreationTimeUtcAsync`
 - `GetLastWriteTimeUtcAsync` / `SetLastWriteTimeUtcAsync`
@@ -81,12 +88,12 @@ exists. They never overwrite or truncate an existing file.
 `GetEntriesAsync`, `EnumerateFilesAsync` and `EnumerateDirectoriesAsync` return entries in no
 particular order and include every entry, hidden and system entries included. In a search
 pattern, `*` matches zero or more characters and `?` matches exactly one. Whether matching is
-case-sensitive depends on the file system.
+case-sensitive follows the file system's `NameComparer`.
 
 The only entries left out are ones the file system can't present:
 - an entry whose stored name isn't a valid name, for example because it contains `/`;
-- an entry whose name is the same as an earlier entry of the same kind, as the file system
-  compares names.
+- an entry whose name is the same as an earlier entry of the same kind, as the file system's
+  `NameComparer` compares names.
 
 A consumer can't find out about these through Saraka. They can't be found by name either, so the
 methods that return entries and the lookups by name always agree. Each implementation's section
@@ -215,6 +222,10 @@ await DumpAsync(fs.Root);
 - Search patterns use simple matching, where `*` and `?` mean only what the contract says. That
   avoids the Windows quirk where `*.htm` also matches `.html` files. Case sensitivity follows the
   host file system.
+- `NameComparer` ignores case on Windows and macOS and is case-sensitive elsewhere: the platform
+  defaults. It's wrong for a directory that Windows has made case-sensitive, or a case-sensitive
+  macOS volume.
+- `DisplayName` is the root directory's name, or its full path for a drive root such as `C:\`.
 - Metadata operations, such as listings, attributes, times, create, delete and move, run
   synchronously and return completed tasks. Stream reads, writes and copies are truly asynchronous.
 - Instances aren't thread-safe.
@@ -259,7 +270,9 @@ await using (var zip = await FileSystem.OpenAsync(@"C:\Photos\2026.zip", canWrit
 - Creating a directory adds an entry for it.
 - Removing the last thing from a directory adds an entry for that directory, so it doesn't
   disappear.
-- Names are case-sensitive, so `a.txt` and `A.txt` are different files.
+- Names are case-sensitive, so `a.txt` and `A.txt` are different files. `NameComparer` is
+  `StringComparer.Ordinal`.
+- `DisplayName` is the zip file's name, such as `photos.zip`.
 - `ArgumentException` is thrown for a name that is empty, `.` or `..`, or contains `/`, `\` or a
   control character. Other characters are allowed, including ones Windows doesn't allow in file
   names, such as `:` and `?`. A zip file made that way may not extract cleanly on Windows.
@@ -319,6 +332,8 @@ await DumpAsync(fs.Root);
 
 - The tree's top-level folder is the root directory. Paths are built from the documents' display
   names, so the document `DCIM/Camera/img1.jpg` in the tree is `/DCIM/Camera/img1.jpg`.
+- `DisplayName` is the top-level folder's display name, such as `Pictures`, as the provider reports
+  it. The root's `Name` is still the empty string.
 - `CanWrite` is always `false`. Write operations throw `InvalidOperationException`.
 - `OpenAsync` throws `ArgumentException` if the URI isn't a tree URI, `DirectoryNotFoundException`
   if the tree's folder doesn't exist, and `UnauthorizedAccessException` if the app can't read it.
@@ -338,7 +353,8 @@ await DumpAsync(fs.Root);
 - *Filtered listings.* The contract says listings include every entry. Here, entries the options
   exclude don't appear in listings, and `GetFileAsync` and `GetDirectoryAsync` can't find them. By
   default that includes hidden files and directories.
-- *Names.* Names are matched case-insensitively, in lookups and in search patterns. If a directory
+- *Names.* Names are matched case-insensitively, in lookups and in search patterns, and
+  `NameComparer` is `StringComparer.OrdinalIgnoreCase`. If a directory
   has two files, or two directories, whose names differ only in case, only the first in listing
   order is used. Entries whose display names can't be Saraka names, such as names containing `/`,
   are ignored.

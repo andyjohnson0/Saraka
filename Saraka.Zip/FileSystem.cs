@@ -67,9 +67,11 @@ namespace Saraka.Zip
         /// <param name="archiveLastWriteTimeUtc">
         /// The zip file's last-write time, reported by an empty root directory.
         /// </param>
-        private FileSystem(ZipArchive archive, bool canWrite, DateTime archiveLastWriteTimeUtc)
+        /// <param name="zipPath">The zip file's full path.</param>
+        private FileSystem(ZipArchive archive, bool canWrite, DateTime archiveLastWriteTimeUtc, string zipPath)
         {
             _archive = archive;
+            DisplayName = Path.GetFileName(zipPath);
             _archiveLastWriteTimeUtc = archiveLastWriteTimeUtc;
             CanWrite = canWrite;
             _root = new DirectoryEntry(this, RootPath);
@@ -118,7 +120,7 @@ namespace Saraka.Zip
                 {
                     var lastWriteTimeUtc = File.GetLastWriteTimeUtc(fullPath);
                     var mode = canWrite ? ZipArchiveMode.Update : ZipArchiveMode.Read;
-                    return new FileSystem(new ZipArchive(stream, mode, leaveOpen: false), canWrite, lastWriteTimeUtc);
+                    return new FileSystem(new ZipArchive(stream, mode, leaveOpen: false), canWrite, lastWriteTimeUtc, fullPath);
                 }
                 catch
                 {
@@ -136,6 +138,14 @@ namespace Saraka.Zip
         /// <inheritdoc/>
         /// <remarks>This is the value passed to <see cref="OpenAsync"/> and doesn't change.</remarks>
         public bool CanWrite { get; }
+
+        /// <inheritdoc/>
+        /// <remarks>Zip entry names are case-sensitive, so this is <see cref="StringComparer.Ordinal"/>.</remarks>
+        public StringComparer NameComparer => StringComparer.Ordinal;
+
+        /// <inheritdoc/>
+        /// <remarks>The zip file's name, such as "photos.zip".</remarks>
+        public string DisplayName { get; }
 
         /// <summary>
         /// Closes the file system, writing any changes to the zip file. Operations on the file

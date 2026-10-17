@@ -68,6 +68,12 @@ namespace Saraka.Abstractions
         IDirectory? Parent { get; }
 
         /// <summary>
+        /// The file system this entry belongs to. Use it, for example, to tell apart entries with
+        /// the same path in different file systems.
+        /// </summary>
+        IFileSystem FileSystem { get; }
+
+        /// <summary>
         /// Gets the entry's attributes.
         /// </summary>
         /// <param name="cancellationToken">A token to cancel the operation.</param>

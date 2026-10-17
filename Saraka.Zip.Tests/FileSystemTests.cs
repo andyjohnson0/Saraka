@@ -187,4 +187,29 @@ public class FileSystemTests : ZipTestBase
         Assert.Equal(new[] { "/d", "/empty" }, names);
         Assert.Equal("hello", await (await (await Root.GetDirectoryAsync("d")).GetFileAsync("a.txt")).ReadAllTextAsync());
     }
+
+    [Fact]
+    public void NameComparer_IsCaseSensitive()
+    {
+        Assert.Same(StringComparer.Ordinal, Fs.NameComparer);
+        Assert.False(Fs.NameComparer.Equals("a.txt", "A.txt"));
+    }
+
+    [Fact]
+    public void DisplayName_IsTheZipFilesName()
+    {
+        Assert.Equal("test.zip", Fs.DisplayName);
+    }
+
+    [Fact]
+    public async Task FileSystem_IsTheEntrysFileSystem()
+    {
+        var dir = await Root.CreateDirectoryAsync("d");
+        var file = await CreateFileAsync(dir, "a.txt", "x");
+
+        Assert.Same(Fs, Root.FileSystem);
+        Assert.Same(Fs, dir.FileSystem);
+        Assert.Same(Fs, file.FileSystem);
+        Assert.Same(Fs, file.Parent!.FileSystem);
+    }
 }

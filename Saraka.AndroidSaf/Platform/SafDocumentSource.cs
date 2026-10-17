@@ -23,6 +23,7 @@ namespace Saraka.AndroidSaf
             DocumentsContract.Document.ColumnMimeType,
             DocumentsContract.Document.ColumnLastModified,
             DocumentsContract.Document.ColumnSize,
+            DocumentsContract.Document.ColumnDisplayName,
         };
 
         private static readonly string[] ChildrenProjection =
@@ -70,7 +71,8 @@ namespace Saraka.AndroidSaf
                 return new DocumentDetails(
                     IsDirectory: cursor.GetString(0) == DocumentsContract.Document.MimeTypeDir,
                     LastModified: cursor.IsNull(1) ? null : cursor.GetLong(1),
-                    Size: cursor.IsNull(2) ? null : cursor.GetLong(2));
+                    Size: cursor.IsNull(2) ? null : cursor.GetLong(2),
+                    DisplayName: cursor.GetString(3));
             });
         }
 
