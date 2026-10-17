@@ -67,7 +67,6 @@ namespace Saraka.AndroidSaf
             {
                 return RunStreamingAsync(async () =>
                 {
-                    EnsureExists();
                     using var stream = OpenStream();
                     using var buffer = new MemoryStream();
                     await FromSourceAsync(async () =>
@@ -84,7 +83,6 @@ namespace Saraka.AndroidSaf
             {
                 return RunStreamingAsync(async () =>
                 {
-                    EnsureExists();
                     using var stream = OpenStream();
                     using var reader = new StreamReader(stream, Utf8, detectEncodingFromByteOrderMarks: false);
                     return await FromSourceAsync(() => reader.ReadToEndAsync(cancellationToken)).ConfigureAwait(false);
@@ -92,13 +90,10 @@ namespace Saraka.AndroidSaf
             }
 
             /// <inheritdoc/>
+            /// <remarks>The document is opened directly, without querying it first.</remarks>
             public Task<Stream> OpenReadAsync(CancellationToken cancellationToken = default)
             {
-                return RunAsync(() =>
-                {
-                    EnsureExists();
-                    return OpenStream();
-                }, cancellationToken);
+                return RunAsync(OpenStream, cancellationToken);
             }
 
             /// <inheritdoc/>
@@ -118,7 +113,9 @@ namespace Saraka.AndroidSaf
                 new FileNotFoundException($"The file '{Path}' does not exist.", innerException);
 
             /// <summary>
-            /// Opens a read-only stream over this file through the document source.
+            /// Opens a read-only stream over this file through the document source. It doesn't query
+            /// the document first: if the document is missing, the provider's failure to open it
+            /// becomes this file's not-found exception, which saves a provider call for each read.
             /// </summary>
             /// <returns>The stream.</returns>
             /// <exception cref="FileNotFoundException">The file doesn't exist.</exception>
