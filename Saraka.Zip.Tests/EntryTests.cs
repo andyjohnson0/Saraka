@@ -8,6 +8,9 @@ namespace Saraka.Zip.Tests;
 /// </summary>
 public class EntryTests : ZipTestBase
 {
+    /// <summary>
+    /// Names that every implementation must reject.
+    /// </summary>
     public static TheoryData<string> InvalidNames => new()
     {
         "",

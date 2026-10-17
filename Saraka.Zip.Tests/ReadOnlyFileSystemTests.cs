@@ -8,6 +8,9 @@ namespace Saraka.Zip.Tests;
 /// </summary>
 public class ReadOnlyFileSystemTests : ZipTestBase
 {
+    /// <summary>
+    /// The names of the write operations that the test class can perform.
+    /// </summary>
     public static TheoryData<string> WriteOperations => new()
     {
         "File.Rename",
@@ -71,6 +74,11 @@ public class ReadOnlyFileSystemTests : ZipTestBase
         Assert.Single(await Root.EnumerateDirectoriesAsync());
     }
 
+    /// <summary>
+    /// Performs a named write operation.
+    /// </summary>
+    /// <param name="operation">The operation's name, from <c>WriteOperations</c>.</param>
+    /// <returns>A task for the operation.</returns>
     private static Task Run(string operation, IDirectory root, IFile file, IDirectory dir, IDirectory target)
     {
         switch (operation)
@@ -98,5 +106,9 @@ public class ReadOnlyFileSystemTests : ZipTestBase
         }
     }
 
+    /// <summary>
+    /// Hashes the zip file, to check that it didn't change.
+    /// </summary>
+    /// <returns>The SHA-256 hash, in hex.</returns>
     private string Hash() => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(ZipPath)));
 }

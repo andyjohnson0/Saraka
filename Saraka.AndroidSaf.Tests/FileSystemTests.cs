@@ -71,6 +71,9 @@ public class FileSystemTests : AndroidSafTestBase
         Assert.Equal(new[] { "a.txt", "b.txt" }, Names(await root.GetEntriesAsync()));
     }
 
+    /// <summary>
+    /// The kinds of invalid options that <c>OpenAsync</c> must reject.
+    /// </summary>
     public static TheoryData<string> InvalidOptions => new()
     {
         "SortField",
@@ -122,6 +125,9 @@ public class FileSystemTests : AndroidSafTestBase
         await fs.DisposeAsync();
     }
 
+    /// <summary>
+    /// The names of the operations that must fail after disposal.
+    /// </summary>
     public static TheoryData<string> Operations => new()
     {
         "GetEntries",

@@ -7,6 +7,9 @@ namespace Saraka.SystemIO.Tests;
 /// </summary>
 public class EntryTests : FileSystemTestBase
 {
+    /// <summary>
+    /// Names that every implementation must reject.
+    /// </summary>
     public static TheoryData<string> InvalidNames => new()
     {
         "",

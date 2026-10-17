@@ -8,6 +8,12 @@ namespace Saraka.AndroidSaf.Tests;
 /// </summary>
 public class FileTests : AndroidSafTestBase
 {
+    /// <summary>
+    /// Creates "a.txt" in the root, opens a file system and gets the file.
+    /// </summary>
+    /// <param name="content">The file's text.</param>
+    /// <param name="reportSize">False if the provider doesn't report the size.</param>
+    /// <returns>The file.</returns>
     private async Task<IFile> CreateFileAsync(string content = "hello", bool reportSize = true)
     {
         Source.AddFile(RootId, "a.txt", content, reportSize: reportSize);
@@ -81,6 +87,9 @@ public class FileTests : AndroidSafTestBase
         Assert.Equal("hello", await reader.ReadToEndAsync());
     }
 
+    /// <summary>
+    /// The names of the read operations that <c>Read</c> can perform.
+    /// </summary>
     public static TheoryData<string> ReadOperations => new()
     {
         "GetLength",
@@ -168,6 +177,13 @@ public class FileTests : AndroidSafTestBase
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Read(operation, file, cts.Token));
     }
 
+    /// <summary>
+    /// Performs a named read operation.
+    /// </summary>
+    /// <param name="operation">The operation's name, from <see cref="ReadOperations"/>.</param>
+    /// <param name="file">The file.</param>
+    /// <param name="ct">The cancellation token to pass.</param>
+    /// <returns>A task for the operation.</returns>
     private static Task Read(string operation, IFile file, CancellationToken ct = default)
     {
         return operation switch

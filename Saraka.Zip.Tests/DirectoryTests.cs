@@ -5,6 +5,9 @@ namespace Saraka.Zip.Tests;
 
 public class DirectoryTests : ZipTestBase
 {
+    /// <summary>
+    /// Names that every implementation must reject.
+    /// </summary>
     public static TheoryData<string> InvalidNames => EntryTests.InvalidNames;
 
     // Listing

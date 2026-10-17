@@ -5,6 +5,9 @@ namespace Saraka.SystemIO.Tests;
 
 public class DirectoryTests : FileSystemTestBase
 {
+    /// <summary>
+    /// Names that every implementation must reject.
+    /// </summary>
     public static TheoryData<string> InvalidNames => EntryTests.InvalidNames;
 
     // Listing
@@ -428,6 +431,10 @@ public class DirectoryTests : FileSystemTestBase
         await Assert.ThrowsAsync<DirectoryNotFoundException>(() => dir.DeleteAsync());
     }
 
+    /// <summary>
+    /// Creates a file on disk and marks it hidden.
+    /// </summary>
+    /// <param name="name">The file's name, in the root directory.</param>
     private void CreateHiddenFile(string name)
     {
         // A leading dot hides a file on Unix; Windows uses the Hidden attribute.
