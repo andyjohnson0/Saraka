@@ -6,10 +6,17 @@
     <Nullable>enable</Nullable>
     <Version>0.1.0</Version>
     <Authors>Andrew Johnson</Authors>
+    <Description>Async interfaces for browsing and editing a file system: IFileSystem, IDirectory, IFile and IFileSystemEntry. Implementations decide what the file system is backed by.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/andyjohnson0/Saraka</PackageProjectUrl>
     <RepositoryUrl>https://github.com/andyjohnson0/Saraka</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
 </Project>
