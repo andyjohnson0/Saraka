@@ -198,7 +198,7 @@ namespace Saraka.SystemIO
         /// <exception cref="ArgumentException">
         /// <paramref name="name"/> is empty, "." or "..", or contains a separator or a character the host doesn't allow.
         /// </exception>
-        private static void ValidateName(string name, string paramName)
+        private static void ValidateName(string? name, string paramName)
         {
             if (name == null)
                 throw new ArgumentNullException(paramName);
@@ -218,7 +218,7 @@ namespace Saraka.SystemIO
         /// <param name="paramName">The name of the parameter it was passed as.</param>
         /// <exception cref="ArgumentNullException"><paramref name="searchPattern"/> is null.</exception>
         /// <exception cref="ArgumentException"><paramref name="searchPattern"/> contains a path separator.</exception>
-        private static void ValidatePattern(string searchPattern, string paramName)
+        private static void ValidatePattern(string? searchPattern, string paramName)
         {
             if (searchPattern == null)
                 throw new ArgumentNullException(paramName);

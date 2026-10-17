@@ -217,7 +217,7 @@ namespace Saraka.Zip
         /// </summary>
         /// <param name="name">The file's zip entry name.</param>
         /// <returns>The first entry with that exact name, or null if there is none.</returns>
-        private ZipArchiveEntry FindFileEntry(string name)
+        private ZipArchiveEntry? FindFileEntry(string name)
         {
             return _archive.Entries.FirstOrDefault(e => string.Equals(e.FullName, name, StringComparison.Ordinal));
         }
@@ -227,7 +227,7 @@ namespace Saraka.Zip
         /// </summary>
         /// <param name="name">The directory's zip entry name, without a trailing "/".</param>
         /// <returns>The directory's own entry, or null if it has none or is the root.</returns>
-        private ZipArchiveEntry FindDirectoryEntry(string name)
+        private ZipArchiveEntry? FindDirectoryEntry(string name)
         {
             if (name.Length == 0)
                 return null;
@@ -309,7 +309,7 @@ namespace Saraka.Zip
             }
             else
             {
-                var entry = FindFileEntry(oldName);
+                var entry = FindFileEntry(oldName)!;
                 CopyEntry(entry, newName);
                 entry.Delete();
             }
@@ -361,7 +361,7 @@ namespace Saraka.Zip
         /// <param name="paramName">The name of the parameter it was passed as.</param>
         /// <exception cref="ArgumentNullException"><paramref name="name"/> is null.</exception>
         /// <exception cref="ArgumentException"><paramref name="name"/> isn't valid; see <see cref="IsValidName"/>.</exception>
-        private static void ValidateName(string name, string paramName)
+        private static void ValidateName(string? name, string paramName)
         {
             if (name == null)
                 throw new ArgumentNullException(paramName);
@@ -378,7 +378,7 @@ namespace Saraka.Zip
         /// <param name="paramName">The name of the parameter it was passed as.</param>
         /// <exception cref="ArgumentNullException"><paramref name="searchPattern"/> is null.</exception>
         /// <exception cref="ArgumentException"><paramref name="searchPattern"/> contains a path separator.</exception>
-        private static void ValidatePattern(string searchPattern, string paramName)
+        private static void ValidatePattern(string? searchPattern, string paramName)
         {
             if (searchPattern == null)
                 throw new ArgumentNullException(paramName);

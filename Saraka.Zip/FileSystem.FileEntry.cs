@@ -155,8 +155,9 @@ namespace Saraka.Zip
             /// <summary>
             /// Gets this file's zip entry.
             /// </summary>
-            /// <returns>The zip entry, or null if the file doesn't exist.</returns>
-            private ZipArchiveEntry GetZipEntry() => Owner.FindFileEntry(EntryName);
+            /// <returns>The zip entry.</returns>
+            /// <exception cref="FileNotFoundException">The file doesn't exist.</exception>
+            private ZipArchiveEntry GetZipEntry() => Owner.FindFileEntry(EntryName) ?? throw NotFound();
         }
     }
 }

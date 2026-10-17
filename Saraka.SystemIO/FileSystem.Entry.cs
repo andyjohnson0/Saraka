@@ -50,7 +50,7 @@ namespace Saraka.SystemIO
 
             /// <inheritdoc/>
             /// <remarks>A new instance on each call, built from this entry's current path.</remarks>
-            public IDirectory Parent => IsRoot ? null : new DirectoryEntry(Owner, GetParentPath(_path));
+            public IDirectory? Parent => IsRoot ? null : new DirectoryEntry(Owner, GetParentPath(_path));
 
             /// <inheritdoc/>
             public Task<FileAttributes> GetAttributesAsync(CancellationToken cancellationToken = default)
