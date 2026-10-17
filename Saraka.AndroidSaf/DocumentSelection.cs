@@ -31,7 +31,7 @@ namespace Saraka.AndroidSaf
 
 
         /// <summary>
-        /// Select the image documents from a directory listing and sort them.
+        /// Select the file documents from a directory listing and sort them.
         /// Directories are excluded, and so are hidden files (display name starts with a period) unless includeHidden is
         /// true.
         /// </summary>
@@ -60,7 +60,6 @@ namespace Saraka.AndroidSaf
                 if (fileTypes != null && !fileTypes.Any(s => entry.DisplayName.EndsWith('.' + s, StringComparison.CurrentCultureIgnoreCase)))
                     continue;  // File types is specified and display name doesn't end with any of them.
 
-                // Match
                 documents.Add(entry);
             }
 
@@ -91,12 +90,25 @@ namespace Saraka.AndroidSaf
         }
 
 
+        /// <summary>
+        /// Determines whether a document is hidden.
+        /// </summary>
+        /// <param name="entry">The document.</param>
+        /// <returns>True if its display name starts with a period.</returns>
         private static bool IsHidden(DocumentEntry entry)
         {
             return entry.DisplayName.StartsWith('.');
         }
 
 
+        /// <summary>
+        /// Sorts documents. Sorting by name ignores case, so that the order is what people expect.
+        /// Documents that compare equal keep their order.
+        /// </summary>
+        /// <param name="documents">The documents.</param>
+        /// <param name="sortField">Field to sort on.</param>
+        /// <param name="sortOrder">Order to sort.</param>
+        /// <returns>The sorted documents.</returns>
         private static List<DocumentEntry> Sort(
             List<DocumentEntry> documents,
             SortField sortField,
@@ -104,8 +116,6 @@ namespace Saraka.AndroidSaf
         {
             if (sortField == SortField.FileName)
             {
-                // Sort by display name so that the collection has an expected ordering.
-                // We use a case-insensitive sort by display name. Use StringComparer.Ordinal for case-sensitive.
                 if (sortOrder == SortOrder.Ascending)
                 {
                     documents = documents.OrderBy(d => d.DisplayName, StringComparer.OrdinalIgnoreCase).ToList();

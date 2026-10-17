@@ -74,6 +74,11 @@ namespace Saraka.AndroidSaf
         private readonly DirectoryEntry _root;
         private bool _disposed;
 
+        /// <summary>
+        /// Creates a file system over a document source.
+        /// </summary>
+        /// <param name="source">The document source.</param>
+        /// <param name="options">The options, already validated. Their values are copied.</param>
         private FileSystem(IDocumentSource source, FileSystemOptions options)
         {
             _source = source;
@@ -102,6 +107,17 @@ namespace Saraka.AndroidSaf
             return default;
         }
 
+        /// <summary>
+        /// Opens a file system over a document source: validates the options and checks that the
+        /// root exists, is a folder and can be read. Used by the Android <c>OpenAsync</c>, and by
+        /// tests.
+        /// </summary>
+        /// <param name="source">The document source.</param>
+        /// <param name="options">The options, or null for the defaults.</param>
+        /// <param name="cancellationToken">A token to cancel the operation.</param>
+        /// <returns>The opened file system.</returns>
+        /// <exception cref="ArgumentException"><paramref name="options"/> holds an invalid value.</exception>
+        /// <exception cref="DirectoryNotFoundException">The root folder doesn't exist.</exception>
         private static async Task<FileSystem> OpenCoreAsync(
             IDocumentSource source,
             FileSystemOptions? options,
@@ -116,11 +132,23 @@ namespace Saraka.AndroidSaf
             return fileSystem;
         }
 
+        /// <summary>
+        /// Throws if the file system has been disposed.
+        /// </summary>
+        /// <exception cref="ObjectDisposedException">The file system has been disposed.</exception>
         private void ThrowIfDisposed()
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
         }
 
+        /// <summary>
+        /// Checks that the options hold valid values.
+        /// </summary>
+        /// <param name="options">The options.</param>
+        /// <param name="paramName">The name of the parameter they were passed as.</param>
+        /// <exception cref="ArgumentException">
+        /// A sort field or order isn't defined, or a file type is null or empty.
+        /// </exception>
         private static void ValidateOptions(FileSystemOptions options, string paramName)
         {
             if (!Enum.IsDefined(options.SortField))
@@ -131,11 +159,23 @@ namespace Saraka.AndroidSaf
                 throw new ArgumentException("The file types contain a null or empty value.", paramName);
         }
 
+        /// <summary>
+        /// Determines whether a name is a valid Saraka name.
+        /// </summary>
+        /// <param name="name">The name.</param>
+        /// <returns>False if the name is empty, "." or "..", or contains "/".</returns>
         private static bool IsValidName(string name)
         {
             return name.Length > 0 && name != "." && name != ".." && name.IndexOf(Separator) < 0;
         }
 
+        /// <summary>
+        /// Checks that a name is a valid bare name.
+        /// </summary>
+        /// <param name="name">The name to check.</param>
+        /// <param name="paramName">The name of the parameter it was passed as.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="name"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="name"/> isn't valid; see <see cref="IsValidName"/>.</exception>
         private static void ValidateName(string? name, string paramName)
         {
             ArgumentNullException.ThrowIfNull(name, paramName);
@@ -145,6 +185,14 @@ namespace Saraka.AndroidSaf
                     paramName);
         }
 
+        /// <summary>
+        /// Checks that a search pattern is valid. "\" is rejected as well as "/", because it is an
+        /// escape character in the pattern matcher.
+        /// </summary>
+        /// <param name="searchPattern">The pattern to check.</param>
+        /// <param name="paramName">The name of the parameter it was passed as.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="searchPattern"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="searchPattern"/> contains "/" or "\".</exception>
         private static void ValidatePattern(string? searchPattern, string paramName)
         {
             ArgumentNullException.ThrowIfNull(searchPattern, paramName);
@@ -152,11 +200,22 @@ namespace Saraka.AndroidSaf
                 throw new ArgumentException("The search pattern contains a path separator.", paramName);
         }
 
+        /// <summary>
+        /// Builds the Saraka path of a child entry.
+        /// </summary>
+        /// <param name="parentPath">The parent directory's path.</param>
+        /// <param name="name">The child's name.</param>
+        /// <returns>The child's path.</returns>
         private static string CombinePath(string parentPath, string name)
         {
             return parentPath == RootPath ? RootPath + name : parentPath + Separator + name;
         }
 
+        /// <summary>
+        /// Converts a provider's last-modified time to UTC.
+        /// </summary>
+        /// <param name="milliseconds">Milliseconds since the Unix epoch, or null if unknown.</param>
+        /// <returns>The time in UTC, or the Unix epoch if it's unknown.</returns>
         private static DateTime FromUnixTime(long? milliseconds)
         {
             return milliseconds.HasValue
