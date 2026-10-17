@@ -28,11 +28,11 @@ public class EntryTests : FileSystemTestBase
 
         Assert.Equal("c.txt", file.Name);
         Assert.Equal("/a/b/c.txt", file.Path);
-        Assert.Equal("/a/b", file.Parent.Path);
-        Assert.Equal("b", file.Parent.Name);
-        Assert.Equal("/a", file.Parent.Parent.Path);
-        Assert.Equal("/", file.Parent.Parent.Parent.Path);
-        Assert.Null(file.Parent.Parent.Parent.Parent);
+        Assert.Equal("/a/b", file.Parent!.Path);
+        Assert.Equal("b", file.Parent!.Name);
+        Assert.Equal("/a", file.Parent!.Parent!.Path);
+        Assert.Equal("/", file.Parent!.Parent!.Parent!.Path);
+        Assert.Null(file.Parent!.Parent!.Parent!.Parent);
     }
 
     [Fact]
@@ -41,7 +41,7 @@ public class EntryTests : FileSystemTestBase
         var file = await Root.CreateFileAsync("a.txt");
 
         Assert.NotSame(file.Parent, file.Parent);
-        Assert.Equal(file.Parent.Path, file.Parent.Path);
+        Assert.Equal(file.Parent!.Path, file.Parent!.Path);
     }
 
     [Fact]
@@ -50,7 +50,7 @@ public class EntryTests : FileSystemTestBase
         var dir = await Root.CreateDirectoryAsync("d");
         var file = await dir.CreateFileAsync("a.txt");
 
-        var entries = await file.Parent.GetEntriesAsync();
+        var entries = await file.Parent!.GetEntriesAsync();
 
         Assert.Equal("/d/a.txt", Assert.Single(entries).Path);
     }
@@ -332,7 +332,7 @@ public class EntryTests : FileSystemTestBase
 
         Assert.Equal("a.txt", file.Name);
         Assert.Equal("/d/a.txt", file.Path);
-        Assert.Equal("/d", file.Parent.Path);
+        Assert.Equal("/d", file.Parent!.Path);
         Assert.False(File.Exists(HostPath("a.txt")));
         Assert.Equal("hello", File.ReadAllText(HostPath("d", "a.txt")));
     }

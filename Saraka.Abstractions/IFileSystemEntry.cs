@@ -20,6 +20,13 @@ namespace Saraka.Abstractions
     /// Paths always use "/" as the separator, whatever the host operating system.
     /// </para>
     /// <para>
+    /// The interfaces carry nullable annotations, and null is used in only one place:
+    /// <see cref="Parent"/> is null for the root directory. Arguments may not be null (a null
+    /// argument throws <see cref="ArgumentNullException"/>), and results are never null. Listings
+    /// return an empty sequence when there's nothing to list, and lookups throw rather than return
+    /// null when nothing is found.
+    /// </para>
+    /// <para>
     /// Exceptions are reported through the returned task. Besides the exceptions documented on
     /// each member, any operation can throw <see cref="ObjectDisposedException"/> after its
     /// <see cref="IFileSystem"/> has been disposed, <see cref="OperationCanceledException"/>
@@ -51,7 +58,7 @@ namespace Saraka.Abstractions
         /// Implementations may return a new instance on each access, so compare entries by
         /// <see cref="Path"/> rather than by reference.
         /// </summary>
-        IDirectory Parent { get; }
+        IDirectory? Parent { get; }
 
         /// <summary>
         /// Gets the entry's attributes.

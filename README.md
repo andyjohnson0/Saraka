@@ -100,6 +100,12 @@ Methods take bare names, never paths. A name is invalid if it is empty, contains
 `..`, or is otherwise not allowed by the file system. For example, an implementation backed by
 Windows storage rejects `\` and other characters Windows doesn't allow in file names.
 
+**Null.** `Saraka.Abstractions` has nullable annotations, and null appears in only one place:
+`Parent` is null for the root directory (`IDirectory? Parent`). Arguments may not be null, and a
+null argument throws `ArgumentNullException`. Results are never null: listings return an empty
+sequence when there's nothing to list, and `GetFileAsync` and `GetDirectoryAsync` throw rather than
+return null when nothing is found.
+
 **Exceptions.** Exceptions are reported through the returned task. Implementations follow these
 conventions:
 
