@@ -9,6 +9,9 @@ public class ReadOnlyFileSystemTests : FileSystemTestBase
 {
     private static readonly DateTime OriginalTime = new DateTime(2010, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
+    /// <summary>
+    /// The names of the write operations that the test class can perform.
+    /// </summary>
     public static TheoryData<string> WriteOperations => new()
     {
         "File.Rename",
@@ -77,6 +80,11 @@ public class ReadOnlyFileSystemTests : FileSystemTestBase
         Assert.Single(await fs.Root.EnumerateDirectoriesAsync());
     }
 
+    /// <summary>
+    /// Performs a named write operation.
+    /// </summary>
+    /// <param name="operation">The operation's name, from <c>WriteOperations</c>.</param>
+    /// <returns>A task for the operation.</returns>
     private static Task Run(string operation, IDirectory root, IFile file, IDirectory dir, IDirectory target)
     {
         switch (operation)
@@ -102,6 +110,10 @@ public class ReadOnlyFileSystemTests : FileSystemTestBase
         }
     }
 
+    /// <summary>
+    /// Describes every file and directory under the root, to check that nothing changed.
+    /// </summary>
+    /// <returns>The description.</returns>
     private string Snapshot()
     {
         var entries = Directory.EnumerateFileSystemEntries(RootPath, "*", SearchOption.AllDirectories)

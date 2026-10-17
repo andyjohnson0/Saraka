@@ -12,13 +12,23 @@ namespace Saraka.Zip
 {
     public sealed partial class FileSystem
     {
+        /// <summary>
+        /// A directory in the archive. It exists if it has its own entry, or if any entry is
+        /// inside it.
+        /// </summary>
         private sealed class DirectoryEntry : Entry, IDirectory
         {
+            /// <summary>
+            /// Creates an entry for the directory at a Saraka path.
+            /// </summary>
+            /// <param name="owner">The file system the directory belongs to.</param>
+            /// <param name="path">The directory's Saraka path.</param>
             public DirectoryEntry(FileSystem owner, string path)
                 : base(owner, path)
             {
             }
 
+            /// <inheritdoc/>
             public Task<IEnumerable<IFileSystemEntry>> GetEntriesAsync(CancellationToken cancellationToken = default)
             {
                 return Complete(() =>
@@ -28,6 +38,7 @@ namespace Saraka.Zip
                 });
             }
 
+            /// <inheritdoc/>
             public Task<IDirectory> GetDirectoryAsync(string name, CancellationToken cancellationToken = default)
             {
                 return Complete(() =>
@@ -39,6 +50,7 @@ namespace Saraka.Zip
                 });
             }
 
+            /// <inheritdoc/>
             public Task<IFile> GetFileAsync(string name, CancellationToken cancellationToken = default)
             {
                 return Complete(() =>
@@ -50,6 +62,7 @@ namespace Saraka.Zip
                 });
             }
 
+            /// <inheritdoc/>
             public Task<IEnumerable<IFile>> EnumerateFilesAsync(string searchPattern = "*", CancellationToken cancellationToken = default)
             {
                 return Complete(() =>
@@ -61,6 +74,7 @@ namespace Saraka.Zip
                 });
             }
 
+            /// <inheritdoc/>
             public Task<IEnumerable<IDirectory>> EnumerateDirectoriesAsync(string searchPattern = "*", CancellationToken cancellationToken = default)
             {
                 return Complete(() =>
@@ -72,26 +86,29 @@ namespace Saraka.Zip
                 });
             }
 
+            /// <inheritdoc/>
             public Task<IDirectory> CreateDirectoryAsync(string name, CancellationToken cancellationToken = default)
             {
                 return Complete(() =>
                 {
                     var childName = PrepareCreate(name, cancellationToken);
-                    Owner.archive.CreateEntry(childName + Separator);
+                    Owner._archive.CreateEntry(childName + Separator);
                     return (IDirectory)new DirectoryEntry(Owner, CombinePath(Path, name));
                 });
             }
 
+            /// <inheritdoc/>
             public Task<IFile> CreateFileAsync(string name, CancellationToken cancellationToken = default)
             {
                 return Complete(() =>
                 {
                     var childName = PrepareCreate(name, cancellationToken);
-                    Owner.archive.CreateEntry(childName);
+                    Owner._archive.CreateEntry(childName);
                     return (IFile)new FileEntry(Owner, CombinePath(Path, name));
                 });
             }
 
+            /// <inheritdoc/>
             public async Task<IFile> CreateFileAsync(string name, Stream content, CancellationToken cancellationToken = default)
             {
                 Owner.ThrowIfDisposed();
@@ -102,7 +119,7 @@ namespace Saraka.Zip
                     throw new ArgumentException("The content stream can't be read.", nameof(content));
                 var childName = PrepareCreate(name, cancellationToken);
 
-                var entry = Owner.archive.CreateEntry(childName);
+                var entry = Owner._archive.CreateEntry(childName);
                 try
                 {
                     using (var stream = entry.Open())
@@ -119,6 +136,7 @@ namespace Saraka.Zip
                 return new FileEntry(Owner, CombinePath(Path, name));
             }
 
+            /// <inheritdoc/>
             public Task DeleteAsync(bool recursive = false, CancellationToken cancellationToken = default)
             {
                 return Complete(() =>
@@ -140,11 +158,14 @@ namespace Saraka.Zip
                 });
             }
 
+            /// <inheritdoc/>
             protected override bool Exists() => Owner.DirectoryExists(EntryName);
 
+            /// <inheritdoc/>
             protected override IOException NotFound() =>
                 new DirectoryNotFoundException($"The directory '{Path}' does not exist.");
 
+            /// <inheritdoc/>
             protected override FileAttributes GetAttributesCore()
             {
                 var entry = Owner.FindDirectoryEntry(EntryName);
@@ -153,7 +174,8 @@ namespace Saraka.Zip
                     : FromExternalAttributes(entry.ExternalAttributes, isDirectory: true);
             }
 
-            // The root has no entry of its own, so its attributes can't be changed.
+            /// <inheritdoc/>
+            /// <remarks>The root has no entry of its own, so its attributes can't be changed.</remarks>
             protected override void SetAttributesCore(FileAttributes attributes)
             {
                 if (IsRoot)
@@ -162,8 +184,11 @@ namespace Saraka.Zip
                 entry.ExternalAttributes = ToExternalAttributes(entry.ExternalAttributes, attributes, isDirectory: true);
             }
 
-            // A directory without its own entry reports the latest time of anything inside it.
-            // An empty root reports the zip file's last-write time.
+            /// <inheritdoc/>
+            /// <remarks>
+            /// A directory without its own entry reports the latest time of anything inside it. An
+            /// empty root reports the zip file's last-write time.
+            /// </remarks>
             protected override DateTime GetLastWriteTimeCore()
             {
                 var entry = Owner.FindDirectoryEntry(EntryName);
@@ -172,11 +197,12 @@ namespace Saraka.Zip
 
                 var contents = Owner.FindEntriesWithPrefix(DirectoryPrefix(EntryName));
                 return contents.Count == 0
-                    ? Owner.archiveLastWriteTimeUtc
+                    ? Owner._archiveLastWriteTimeUtc
                     : contents.Max(e => FromZipTime(e.LastWriteTime));
             }
 
-            // The root has no entry of its own, so its time can't be changed.
+            /// <inheritdoc/>
+            /// <remarks>The root has no entry of its own, so its time can't be changed.</remarks>
             protected override void SetLastWriteTimeCore(DateTimeOffset lastWriteTime)
             {
                 if (IsRoot)
@@ -184,20 +210,33 @@ namespace Saraka.Zip
                 GetOrCreateOwnEntry().LastWriteTime = lastWriteTime;
             }
 
+            /// <summary>
+            /// Gets this directory's own entry, creating it if the directory exists only because of its
+            /// contents.
+            /// </summary>
+            /// <returns>The directory's own entry.</returns>
             private ZipArchiveEntry GetOrCreateOwnEntry()
             {
-                return Owner.FindDirectoryEntry(EntryName) ?? Owner.archive.CreateEntry(EntryName + Separator);
+                return Owner.FindDirectoryEntry(EntryName) ?? Owner._archive.CreateEntry(EntryName + Separator);
             }
 
-            // Lists the direct children of this directory. A child directory may have its own
-            // entry ("a/") or exist only because entries are inside it ("a/b.txt").
+            /// <summary>
+            /// Lists the direct children of this directory. A child directory may have its own entry
+            /// ("a/") or exist only because entries are inside it ("a/b.txt"). Names that aren't valid
+            /// are skipped, and for duplicates the first entry wins.
+            /// </summary>
+            /// <param name="files">True to include files.</param>
+            /// <param name="directories">True to include directories.</param>
+            /// <param name="match">Selects children by name.</param>
+            /// <param name="cancellationToken">A token to cancel the operation.</param>
+            /// <returns>The children.</returns>
             private List<IFileSystemEntry> ListChildren(
                 bool files, bool directories, Func<string, bool> match, CancellationToken cancellationToken)
             {
                 var prefix = DirectoryPrefix(EntryName);
                 var seen = new HashSet<string>(StringComparer.Ordinal);
                 var children = new List<IFileSystemEntry>();
-                foreach (var entry in Owner.archive.Entries)
+                foreach (var entry in Owner._archive.Entries)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     var fullName = entry.FullName;
@@ -221,11 +260,22 @@ namespace Saraka.Zip
                 return children;
             }
 
+            /// <summary>
+            /// Creates a case-sensitive matcher for a search pattern.
+            /// </summary>
+            /// <param name="searchPattern">The search pattern, using "*" and "?".</param>
+            /// <returns>A function that tests a name against the pattern.</returns>
             private static Func<string, bool> Matcher(string searchPattern)
             {
                 return name => FileSystemName.MatchesSimpleExpression(searchPattern, name, ignoreCase: false);
             }
 
+            /// <summary>
+            /// Makes the checks for looking up a child by name.
+            /// </summary>
+            /// <param name="name">The child's name.</param>
+            /// <param name="cancellationToken">A token to cancel the operation.</param>
+            /// <returns>The child's zip entry name.</returns>
             private string PrepareLookup(string name, CancellationToken cancellationToken)
             {
                 Owner.ThrowIfDisposed();
@@ -235,6 +285,11 @@ namespace Saraka.Zip
                 return ToEntryName(CombinePath(Path, name));
             }
 
+            /// <summary>
+            /// Makes the checks for listing children that match a pattern.
+            /// </summary>
+            /// <param name="searchPattern">The search pattern.</param>
+            /// <param name="cancellationToken">A token to cancel the operation.</param>
             private void PrepareEnumeration(string searchPattern, CancellationToken cancellationToken)
             {
                 Owner.ThrowIfDisposed();
@@ -243,6 +298,12 @@ namespace Saraka.Zip
                 EnsureExists();
             }
 
+            /// <summary>
+            /// Makes the checks for creating a child, including that the name isn't taken.
+            /// </summary>
+            /// <param name="name">The new child's name.</param>
+            /// <param name="cancellationToken">A token to cancel the operation.</param>
+            /// <returns>The new child's zip entry name.</returns>
             private string PrepareCreate(string name, CancellationToken cancellationToken)
             {
                 Owner.ThrowIfDisposed();

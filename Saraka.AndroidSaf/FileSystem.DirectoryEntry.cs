@@ -13,15 +13,27 @@ namespace Saraka.AndroidSaf
 {
     public sealed partial class FileSystem
     {
+        /// <summary>
+        /// A folder in the document tree.
+        /// </summary>
         private sealed class DirectoryEntry : Entry, IDirectory
         {
+            /// <summary>
+            /// Creates an entry for a folder.
+            /// </summary>
+            /// <param name="owner">The file system the folder belongs to.</param>
+            /// <param name="parent">The folder it was found in, or null for the root.</param>
+            /// <param name="name">The folder's display name, or "" for the root.</param>
+            /// <param name="documentId">The provider's document ID.</param>
             public DirectoryEntry(FileSystem owner, DirectoryEntry? parent, string name, string documentId)
                 : base(owner, parent, name, documentId)
             {
             }
 
+            /// <inheritdoc/>
             protected override bool IsDirectory => true;
 
+            /// <inheritdoc/>
             public Task<IEnumerable<IFileSystemEntry>> GetEntriesAsync(CancellationToken cancellationToken = default)
             {
                 return RunAsync(() =>
@@ -32,6 +44,7 @@ namespace Saraka.AndroidSaf
                 }, cancellationToken);
             }
 
+            /// <inheritdoc/>
             public Task<IDirectory> GetDirectoryAsync(string name, CancellationToken cancellationToken = default)
             {
                 return RunAsync(() =>
@@ -44,6 +57,7 @@ namespace Saraka.AndroidSaf
                 }, cancellationToken);
             }
 
+            /// <inheritdoc/>
             public Task<IFile> GetFileAsync(string name, CancellationToken cancellationToken = default)
             {
                 return RunAsync(() =>
@@ -56,6 +70,7 @@ namespace Saraka.AndroidSaf
                 }, cancellationToken);
             }
 
+            /// <inheritdoc/>
             public Task<IEnumerable<IFile>> EnumerateFilesAsync(string searchPattern = "*", CancellationToken cancellationToken = default)
             {
                 return RunAsync(() =>
@@ -69,6 +84,7 @@ namespace Saraka.AndroidSaf
                 }, cancellationToken);
             }
 
+            /// <inheritdoc/>
             public Task<IEnumerable<IDirectory>> EnumerateDirectoriesAsync(string searchPattern = "*", CancellationToken cancellationToken = default)
             {
                 return RunAsync(() =>
@@ -82,16 +98,19 @@ namespace Saraka.AndroidSaf
                 }, cancellationToken);
             }
 
+            /// <inheritdoc/>
             public Task<IDirectory> CreateDirectoryAsync(string name, CancellationToken cancellationToken = default)
             {
                 return RejectWriteAsync<IDirectory>(cancellationToken, () => ValidateName(name, nameof(name)));
             }
 
+            /// <inheritdoc/>
             public Task<IFile> CreateFileAsync(string name, CancellationToken cancellationToken = default)
             {
                 return RejectWriteAsync<IFile>(cancellationToken, () => ValidateName(name, nameof(name)));
             }
 
+            /// <inheritdoc/>
             public Task<IFile> CreateFileAsync(string name, Stream content, CancellationToken cancellationToken = default)
             {
                 return RejectWriteAsync<IFile>(cancellationToken, () =>
@@ -103,18 +122,26 @@ namespace Saraka.AndroidSaf
                 });
             }
 
+            /// <inheritdoc/>
             public Task DeleteAsync(bool recursive = false, CancellationToken cancellationToken = default)
             {
                 return RejectWriteAsync(cancellationToken);
             }
 
+            /// <inheritdoc/>
             protected override IOException NotFound(Exception? innerException) =>
                 new DirectoryNotFoundException($"The directory '{Path}' does not exist.", innerException);
 
-            // Lists the direct children that the options allow, in the order the options give.
-            // When two children of the same kind have names that differ only in case, the first
-            // is kept. That happens before matching, so lookups and listings agree on which one
-            // is used.
+            /// <summary>
+            /// Lists the direct children that the options allow, in the order the options give. When
+            /// two children of the same kind have names that differ only in case, the first is kept.
+            /// That happens before matching, so lookups and listings agree on which one is used.
+            /// </summary>
+            /// <param name="files">True to include files.</param>
+            /// <param name="directories">True to include directories.</param>
+            /// <param name="match">Selects children by name.</param>
+            /// <param name="cancellationToken">A token to cancel the operation.</param>
+            /// <returns>The children, directories first.</returns>
             private List<Entry> ListChildren(
                 bool files, bool directories, Func<string, bool> match, CancellationToken cancellationToken)
             {
@@ -148,11 +175,21 @@ namespace Saraka.AndroidSaf
                 return children;
             }
 
+            /// <summary>
+            /// Creates a matcher for a name, ignoring case.
+            /// </summary>
+            /// <param name="name">The name to match.</param>
+            /// <returns>A function that tests a name.</returns>
             private static Func<string, bool> NameIs(string name)
             {
                 return candidate => string.Equals(candidate, name, StringComparison.OrdinalIgnoreCase);
             }
 
+            /// <summary>
+            /// Creates a matcher for a search pattern, ignoring case.
+            /// </summary>
+            /// <param name="searchPattern">The search pattern, using "*" and "?".</param>
+            /// <returns>A function that tests a name against the pattern.</returns>
             private static Func<string, bool> Matches(string searchPattern)
             {
                 return name => FileSystemName.MatchesSimpleExpression(searchPattern, name, ignoreCase: true);

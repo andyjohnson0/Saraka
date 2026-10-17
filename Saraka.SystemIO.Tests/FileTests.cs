@@ -130,6 +130,9 @@ public class FileTests : FileSystemTestBase
         Assert.False(File.Exists(HostPath("a.txt")));
     }
 
+    /// <summary>
+    /// The names of the file operations that <c>Run</c> can perform.
+    /// </summary>
     public static TheoryData<string> FileOperations => new()
     {
         "GetLength",
@@ -165,6 +168,12 @@ public class FileTests : FileSystemTestBase
         Assert.True(Directory.Exists(HostPath("a")));
     }
 
+    /// <summary>
+    /// Performs a named file operation.
+    /// </summary>
+    /// <param name="file">The file.</param>
+    /// <param name="operation">The operation's name, from <c>FileOperations</c>.</param>
+    /// <returns>A task for the operation.</returns>
     private static async Task Run(IFile file, string operation)
     {
         switch (operation)

@@ -6,16 +6,33 @@ namespace Saraka.AndroidSaf.Tests;
 /// </summary>
 public class DocumentSelectionTests
 {
+    /// <summary>
+    /// Creates a file entry.
+    /// </summary>
+    /// <param name="name">The display name.</param>
+    /// <param name="lastModified">The last-modified time, in milliseconds since the epoch.</param>
+    /// <returns>The entry.</returns>
     private static DocumentEntry File(string name, long lastModified = 0)
     {
         return new DocumentEntry("id:" + name, name, lastModified, IsDirectory: false);
     }
 
+    /// <summary>
+    /// Creates a folder entry.
+    /// </summary>
+    /// <param name="name">The display name.</param>
+    /// <param name="lastModified">The last-modified time, in milliseconds since the epoch.</param>
+    /// <returns>The entry.</returns>
     private static DocumentEntry Folder(string name, long lastModified = 0)
     {
         return new DocumentEntry("id:" + name, name, lastModified, IsDirectory: true);
     }
 
+    /// <summary>
+    /// Gets the display names of entries, in order.
+    /// </summary>
+    /// <param name="entries">The entries.</param>
+    /// <returns>Their display names.</returns>
     private static string[] Names(IEnumerable<DocumentEntry> entries)
     {
         return entries.Select(e => e.DisplayName).ToArray();

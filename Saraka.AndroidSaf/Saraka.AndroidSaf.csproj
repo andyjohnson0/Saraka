@@ -12,14 +12,17 @@
     <RootNamespace>Saraka.AndroidSaf</RootNamespace>
     <Version>0.1.0</Version>
     <Authors>Andrew Johnson</Authors>
+    <Description>A read-only Saraka file system backed by an Android Storage Access Framework document tree, such as a folder chosen with the system folder picker. Requires Android 13 (API 33) or later.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/andyjohnson0/Saraka</PackageProjectUrl>
     <RepositoryUrl>https://github.com/andyjohnson0/Saraka</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
-    <AndroidPackageFormat>apk</AndroidPackageFormat>
-  </PropertyGroup>
+  <ItemGroup>
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Saraka.Abstractions\Saraka.Abstractions.csproj" />
   </ItemGroup>

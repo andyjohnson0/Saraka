@@ -146,6 +146,9 @@ public class EntryTests : AndroidSafTestBase
         Assert.Equal("/", root.ToString());
     }
 
+    /// <summary>
+    /// The names of the write operations that the test class can perform.
+    /// </summary>
     public static TheoryData<string> WriteOperations => new()
     {
         "File.Rename",
@@ -219,6 +222,9 @@ public class EntryTests : AndroidSafTestBase
         Assert.Equal("hello", await file.ReadAllTextAsync());
     }
 
+    /// <summary>
+    /// Write operations with an invalid argument, and the exception each must throw.
+    /// </summary>
     public static TheoryData<string, Type> InvalidWriteArguments => new()
     {
         { "Rename.Null", typeof(ArgumentNullException) },
@@ -272,6 +278,10 @@ public class EntryTests : AndroidSafTestBase
         await Assert.ThrowsAsync<ArgumentNullException>(() => task!);
     }
 
+    /// <summary>
+    /// Creates a file "a.txt" and a folder "d" in the root, and opens them.
+    /// </summary>
+    /// <returns>The root, the file and the folder.</returns>
     private async Task<(IDirectory Root, IFile File, IDirectory Dir)> CreateEntriesAsync()
     {
         Source.AddFile(RootId, "a.txt", "hello");
@@ -280,6 +290,15 @@ public class EntryTests : AndroidSafTestBase
         return (root, await root.GetFileAsync("a.txt"), await root.GetDirectoryAsync("d"));
     }
 
+    /// <summary>
+    /// Performs a named write operation.
+    /// </summary>
+    /// <param name="operation">The operation's name, from <see cref="WriteOperations"/>.</param>
+    /// <param name="root">The root directory.</param>
+    /// <param name="file">A file.</param>
+    /// <param name="dir">A directory.</param>
+    /// <param name="ct">The cancellation token to pass.</param>
+    /// <returns>A task for the operation.</returns>
     private static Task RunWrite(string operation, IDirectory root, IFile file, IDirectory dir, CancellationToken ct)
     {
         var time = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -309,8 +328,12 @@ public class EntryTests : AndroidSafTestBase
         };
     }
 
+    /// <summary>
+    /// A stream that reports it can't be read.
+    /// </summary>
     private sealed class UnreadableStream : MemoryStream
     {
+        /// <inheritdoc/>
         public override bool CanRead => false;
     }
 }

@@ -51,10 +51,14 @@ namespace Saraka.AndroidSaf
             RootDocumentId = DocumentsContract.GetTreeDocumentId(treeUri)!;
         }
 
+        /// <inheritdoc/>
         public string RootDocumentId { get; }
 
-        // A provider's query returns null for a document that doesn't exist, because
-        // DocumentsProvider.query catches the provider's FileNotFoundException.
+        /// <inheritdoc/>
+        /// <remarks>
+        /// A provider's query returns null for a document that doesn't exist, because
+        /// DocumentsProvider.query catches the provider's FileNotFoundException.
+        /// </remarks>
         public DocumentDetails? QueryDocument(string documentId)
         {
             return Translate(() =>
@@ -70,6 +74,7 @@ namespace Saraka.AndroidSaf
             });
         }
 
+        /// <inheritdoc/>
         public IReadOnlyList<DocumentEntry> ListChildren(string directoryDocumentId)
         {
             return Translate(() =>
@@ -88,6 +93,7 @@ namespace Saraka.AndroidSaf
             });
         }
 
+        /// <inheritdoc/>
         public Stream OpenRead(string documentId)
         {
             return Translate(() =>
@@ -113,6 +119,12 @@ namespace Saraka.AndroidSaf
             };
         }
 
+        /// <summary>
+        /// Runs a call to the provider, reporting Android and Java exceptions as .NET exceptions.
+        /// </summary>
+        /// <typeparam name="T">The call's result type.</typeparam>
+        /// <param name="operation">The call.</param>
+        /// <returns>The call's result.</returns>
         private static T Translate<T>(Func<T> operation)
         {
             try
@@ -125,11 +137,22 @@ namespace Saraka.AndroidSaf
             }
         }
 
+        /// <summary>
+        /// Builds the content URI of a document in the tree.
+        /// </summary>
+        /// <param name="documentId">The document ID.</param>
+        /// <returns>The document's URI.</returns>
         private Android.Net.Uri DocumentUri(string documentId)
         {
             return DocumentsContract.BuildDocumentUriUsingTree(_treeUri, documentId)!;
         }
 
+        /// <summary>
+        /// Reads a folder listing from a cursor over <see cref="ChildrenProjection"/>. Documents
+        /// without an ID are skipped, because they can't be opened.
+        /// </summary>
+        /// <param name="cursor">The cursor.</param>
+        /// <returns>The documents, in the provider's order.</returns>
         private static List<DocumentEntry> ReadEntries(Android.Database.ICursor cursor)
         {
             var entries = new List<DocumentEntry>();
