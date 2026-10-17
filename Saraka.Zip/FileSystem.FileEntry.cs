@@ -36,7 +36,7 @@ namespace Saraka.Zip
             /// <inheritdoc/>
             public Task<long> GetLengthAsync(CancellationToken cancellationToken = default)
             {
-                return Complete(() =>
+                return Owner.Locked(() =>
                 {
                     PrepareRead(cancellationToken);
                     var entry = GetZipEntry();
@@ -58,8 +58,7 @@ namespace Saraka.Zip
             /// <inheritdoc/>
             public async Task<byte[]> ReadAllBytesAsync(CancellationToken cancellationToken = default)
             {
-                PrepareRead(cancellationToken);
-                using (var stream = GetZipEntry().Open())
+                using (var stream = await OpenReadAsync(cancellationToken).ConfigureAwait(false))
                 using (var buffer = new MemoryStream())
                 {
                     await stream.CopyToAsync(buffer, CopyBufferSize, cancellationToken).ConfigureAwait(false);
@@ -70,8 +69,7 @@ namespace Saraka.Zip
             /// <inheritdoc/>
             public async Task<string> ReadAllTextAsync(CancellationToken cancellationToken = default)
             {
-                PrepareRead(cancellationToken);
-                using (var stream = GetZipEntry().Open())
+                using (var stream = await OpenReadAsync(cancellationToken).ConfigureAwait(false))
                 using (var reader = new StreamReader(stream, Utf8, detectEncodingFromByteOrderMarks: false))
                 {
                     // StreamReader.ReadToEndAsync has no cancellable overload in .NET Standard 2.1.
@@ -82,18 +80,23 @@ namespace Saraka.Zip
             }
 
             /// <inheritdoc/>
+            /// <remarks>
+            /// On a read-only file system the stream has its own file handle and reads straight from
+            /// the zip file. On a writable one it's a read-only copy of the file's contents in memory.
+            /// Either way it can be read in parallel with other operations, and it stays usable after
+            /// the file system is disposed.
+            /// </remarks>
             public Task<Stream> OpenReadAsync(CancellationToken cancellationToken = default)
             {
-                return Complete(() =>
+                return Owner.Locked(() =>
                 {
                     PrepareRead(cancellationToken);
-                    var entry = GetZipEntry();
                     if (Owner.IsReadMode)
-                        return entry.Open();
+                        return Owner.OpenIndependentReadStream(EntryName);
 
                     // In update mode, an entry's stream is writable and the entry can only be
                     // opened once at a time, so return a read-only copy of its contents.
-                    using (var stream = entry.Open())
+                    using (var stream = GetZipEntry().Open())
                     {
                         var copy = new MemoryStream();
                         stream.CopyTo(copy, CopyBufferSize);
@@ -105,7 +108,7 @@ namespace Saraka.Zip
             /// <inheritdoc/>
             public Task<Stream> OpenWriteAsync(CancellationToken cancellationToken = default)
             {
-                return Complete(() =>
+                return Owner.Locked(() =>
                 {
                     PrepareWrite(cancellationToken);
                     var entry = GetZipEntry();
@@ -119,7 +122,7 @@ namespace Saraka.Zip
             /// <inheritdoc/>
             public Task DeleteAsync(CancellationToken cancellationToken = default)
             {
-                return Complete(() =>
+                return Owner.Locked(() =>
                 {
                     PrepareWrite(cancellationToken);
                     GetZipEntry().Delete();

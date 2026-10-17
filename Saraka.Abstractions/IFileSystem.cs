@@ -15,8 +15,19 @@ namespace Saraka.Abstractions
     /// </para>
     /// <para>
     /// After the file system has been disposed, operations on it and on its entries throw
-    /// <see cref="ObjectDisposedException"/>. Whether streams that are already open remain usable
-    /// depends on the implementation.
+    /// <see cref="ObjectDisposedException"/>. Streams opened for reading stay usable until they're
+    /// disposed. Whether streams opened for writing stay usable depends on the implementation.
+    /// </para>
+    /// <para>
+    /// A file system and its entries can be used from several threads at once. If one thread
+    /// renames or moves an entry while another uses the same instance, the other sees either the
+    /// old location or the new one. A single stream is not safe to use from several threads at
+    /// once.
+    /// </para>
+    /// <para>
+    /// Implementations never need the calling thread's synchronization context to complete an
+    /// operation, so blocking on a returned task, for example with
+    /// <c>GetAwaiter().GetResult()</c>, doesn't deadlock.
     /// </para>
     /// </remarks>
     public interface IFileSystem : IAsyncDisposable

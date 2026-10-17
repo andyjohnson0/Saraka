@@ -14,7 +14,7 @@ namespace Saraka.SystemIO
         /// </summary>
         private abstract class Entry : IFileSystemEntry
         {
-            private string _path;
+            private volatile string _path;
 
             /// <summary>
             /// Creates an entry for a Saraka path.

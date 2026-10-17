@@ -54,8 +54,17 @@ An open file system. Everything else is reached from its root directory.
 
 Always dispose the file system with `await using` or `DisposeAsync` when you've finished with
 it. Some implementations, such as `Saraka.Zip`, only write changes to storage at that point. After
-that, operations on it and its entries throw `ObjectDisposedException`. Whether streams that are
-already open stay usable depends on the implementation.
+that, operations on it and its entries throw `ObjectDisposedException`. Streams opened for reading
+stay usable until they're disposed. Whether streams opened for writing do depends on the
+implementation.
+
+**Threads.**
+- A file system and its entries can be used from several threads at once.
+- If one thread renames or moves an entry while another uses the same instance, the other sees
+  either the old location or the new one.
+- A single stream isn't safe to use from several threads at once.
+- No operation needs the calling thread's synchronization context to finish, so blocking on a
+  returned task (for example with `GetAwaiter().GetResult()` on a worker thread) doesn't deadlock.
 
 ### `IFileSystemEntry`
 
@@ -258,7 +267,7 @@ await DumpAsync(fs.Root);
 - `DisplayName` is the root directory's name, or its full path for a drive root such as `C:\`.
 - Metadata operations, such as listings, attributes, times, create, delete and move, run
   synchronously and return completed tasks. Stream reads, writes and copies are truly asynchronous.
-- Instances aren't thread-safe.
+- Streams, including write streams, stay usable after the file system is disposed.
 
 Some behaviour depends on the host platform:
 
@@ -328,12 +337,19 @@ await using (var zip = await FileSystem.OpenAsync(@"C:\Photos\2026.zip", canWrit
   without its own entry is never hidden.
 - *Rename and move.* Zip has no rename, so these copy every affected entry to its new name and
   delete the original. That costs time in proportion to the size of the data.
-- *Streams.* On a read-only file system, `OpenReadAsync` streams straight from the zip file. On a
-  writable one, it returns a copy of the file's contents held in memory.
+- *Streams.*
+  - **Read-only file system:** `OpenReadAsync` streams straight from the zip file, through its own
+    file handle.
+  - **Writable file system:** it returns a copy of the file's contents held in memory.
+  - Either way, read streams can be used in parallel and stay usable after the file system is
+    disposed.
 - *Concurrent streams.* On a writable file system, while a file's write stream is open, anything
   else that reads that file's data throws `IOException`. That includes reading it, opening it
   again, renaming it and moving it.
-- *Disposal.* Streams still open when the file system is disposed can no longer be used.
+- *Disposal.* Write streams still open when the file system is disposed can no longer be used.
+- *Threads.* Every operation on the archive holds a lock, because `ZipArchive` isn't thread-safe,
+  so operations from different threads run one at a time. Creating a file from a stream holds the
+  lock while the content is copied.
 - *Asynchrony.* The methods are async, but most of the work behind them is synchronous. .NET
   Standard 2.1 only exposes the synchronous zip APIs. So listing, lookup, attributes, times,
   creating, deleting, renaming and moving all run synchronously and return completed tasks.
@@ -406,7 +422,6 @@ var images = await fs.Root.EnumerateFilesAsync(options: new EntryOptions
   - A cancellation by the provider gives `OperationCanceledException`.
   - Any other provider failure gives `IOException`.
 - *Disposal.* Streams that are open when the file system is disposed stay usable.
-- Instances aren't thread-safe.
 
 ## Building
 

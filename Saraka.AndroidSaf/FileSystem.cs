@@ -47,8 +47,8 @@ namespace Saraka.AndroidSaf
     /// <see cref="UnauthorizedAccessException"/>, a missing document gives
     /// <see cref="FileNotFoundException"/> or <see cref="DirectoryNotFoundException"/>, a
     /// cancellation by the provider gives <see cref="OperationCanceledException"/>, and any
-    /// other provider failure gives <see cref="IOException"/>. Instances of this class and of the
-    /// entries it returns are not thread-safe.
+    /// other provider failure gives <see cref="IOException"/>. Instances can be used from several
+    /// threads at once.
     /// </para>
     /// </remarks>
     public sealed partial class FileSystem : IFileSystem
@@ -61,7 +61,7 @@ namespace Saraka.AndroidSaf
 
         private readonly IDocumentSource _source;
         private readonly DirectoryEntry _root;
-        private bool _disposed;
+        private volatile bool _disposed;
 
         /// <summary>
         /// Creates a file system over a document source.

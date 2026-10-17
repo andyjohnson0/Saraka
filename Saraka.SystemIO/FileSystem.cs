@@ -15,8 +15,8 @@ namespace Saraka.SystemIO
     /// The directory passed to <see cref="OpenAsync"/> becomes the root directory, "/". Entries
     /// outside it can't be reached through Saraka paths. Saraka paths always use "/"; they are
     /// mapped to the host's own separator when System.IO is called. Names may not contain "\"
-    /// on any platform, since it is a separator on Windows. Instances of this class and of the entries
-    /// it returns are not thread-safe.
+    /// on any platform, since it is a separator on Windows. Instances can be used from several
+    /// threads at once.
     /// </remarks>
     public sealed partial class FileSystem : IFileSystem
     {
@@ -57,7 +57,7 @@ namespace Saraka.SystemIO
 
         private readonly string _rootFullPath;
         private readonly DirectoryEntry _root;
-        private bool _disposed;
+        private volatile bool _disposed;
 
         /// <summary>
         /// Creates a file system rooted at a directory that is known to exist.
