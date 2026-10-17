@@ -386,7 +386,9 @@ var images = await fs.Root.EnumerateFilesAsync(options: new EntryOptions
   it. The root's `Name` is still the empty string.
 - `CanWrite` is always `false`. Write operations throw `InvalidOperationException`.
 - `OpenAsync` throws `ArgumentException` if the URI isn't a tree URI, `DirectoryNotFoundException`
-  if the tree's folder doesn't exist, and `UnauthorizedAccessException` if the app can't read it.
+  if the provider reports that the tree's folder doesn't exist, and `UnauthorizedAccessException`
+  if the app can't read it. Android's local storage provider reports a missing tree folder as a
+  general failure, so it gives `IOException`.
 - Calls to the document provider block, so every operation runs on the thread pool. That keeps
   them off the UI thread.
 - The provider can't look up a path directly, so `GetDirectoryAsync(path)` and
@@ -419,6 +421,13 @@ var images = await fs.Root.EnumerateFilesAsync(options: new EntryOptions
   - An Android `SecurityException`, for example when permission has been revoked, becomes
     `UnauthorizedAccessException`.
   - A missing document gives `FileNotFoundException` or `DirectoryNotFoundException`.
+    - Android's local storage provider doesn't say a document is missing. Its check that the
+      document is in the tree fails with a general error instead.
+    - So when a call about an entry fails, the file system reads the entry's parent folder. If
+      the document isn't there, the failure becomes the not-found exception, with the provider's
+      error as the inner exception.
+    - That costs a folder read only when something has already failed.
+    - The root has no parent to check, so a missing root on local storage gives `IOException`.
   - A cancellation by the provider gives `OperationCanceledException`.
   - Any other provider failure gives `IOException`.
 - *Disposal.* Streams that are open when the file system is disposed stay usable.

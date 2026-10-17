@@ -211,11 +211,11 @@ namespace Saraka.AndroidSaf
             private List<Entry> ListChildren(
                 bool files, bool directories, Func<string, bool> match, EntryOptions? options, CancellationToken cancellationToken)
             {
-                var listing = FromSource(() => Owner._source.ListChildren(DocumentId));
+                var documents = FromSource(() => Owner._source.ListChildren(DocumentId));
                 var seenFolders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 var seenFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 var candidates = new List<DocumentEntry>();
-                foreach (var document in listing)
+                foreach (var document in documents)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     var name = document.DisplayName;

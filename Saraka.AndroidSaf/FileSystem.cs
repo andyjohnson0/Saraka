@@ -50,6 +50,13 @@ namespace Saraka.AndroidSaf
     /// other provider failure gives <see cref="IOException"/>. Instances can be used from several
     /// threads at once.
     /// </para>
+    /// <para>
+    /// Android's local storage provider reports a missing document as a general failure, not as
+    /// missing. So when a call about an entry fails, the file system reads the entry's parent
+    /// folder: if the document isn't there, the failure becomes the entry's not-found exception.
+    /// This costs a folder read only when something has already failed. The root has no parent
+    /// to check, so a missing root on local storage gives <see cref="IOException"/>.
+    /// </para>
     /// </remarks>
     public sealed partial class FileSystem : IFileSystem
     {

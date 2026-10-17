@@ -57,8 +57,13 @@ namespace Saraka.AndroidSaf
 
         /// <inheritdoc/>
         /// <remarks>
-        /// A provider's query returns null for a document that doesn't exist, because
-        /// DocumentsProvider.query catches the provider's FileNotFoundException.
+        /// DocumentsProvider.query returns null when the provider throws FileNotFoundException.
+        /// But with a tree URI, DocumentsProvider first checks that the document is in the tree,
+        /// and Android's local storage provider fails that check with an
+        /// IllegalArgumentException ("Failed to determine if ... is child of ...") when the
+        /// document is missing. That becomes an <see cref="IOException"/> here, and
+        /// <see cref="FileSystem"/> checks the parent folder to tell a missing document apart.
+        /// The same check runs before reading a folder's children or opening a document.
         /// </remarks>
         public DocumentDetails? QueryDocument(string documentId)
         {

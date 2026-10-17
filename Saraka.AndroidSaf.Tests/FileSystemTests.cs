@@ -26,11 +26,22 @@ public class FileSystemTests : AndroidSafTestBase
     }
 
     [Fact]
-    public async Task OpenAsync_RootMissing_ThrowsDirectoryNotFoundException()
+    public async Task OpenAsync_RootReportedMissing_ThrowsDirectoryNotFoundException()
     {
+        Source.MissingDocumentsReturnNull = true;
         Source.Remove(RootId);
 
         await Assert.ThrowsAsync<DirectoryNotFoundException>(() => OpenAsync());
+    }
+
+    // A documented limitation: the root has no parent folder to check, so when the local storage
+    // provider's tree check fails, a missing root can't be told apart from other failures.
+    [Fact]
+    public async Task OpenAsync_RootMissingOnLocalStorage_ThrowsIOException()
+    {
+        Source.Remove(RootId);
+
+        await Assert.ThrowsAsync<IOException>(() => OpenAsync());
     }
 
     [Fact]

@@ -28,7 +28,13 @@ namespace Saraka.AndroidSaf
         /// <paramref name="context"/> or <paramref name="treeUri"/> is null.
         /// </exception>
         /// <exception cref="ArgumentException"><paramref name="treeUri"/> is not a document tree URI.</exception>
-        /// <exception cref="DirectoryNotFoundException">The tree's top-level folder doesn't exist.</exception>
+        /// <exception cref="DirectoryNotFoundException">
+        /// The provider reports that the tree's top-level folder doesn't exist.
+        /// </exception>
+        /// <exception cref="IOException">
+        /// The provider failed. Android's local storage provider reports a missing top-level folder
+        /// this way.
+        /// </exception>
         /// <exception cref="UnauthorizedAccessException">The app doesn't have permission to read the tree.</exception>
         public static async Task<FileSystem> OpenAsync(
             Context context,

@@ -43,6 +43,15 @@ internal sealed class FakeDocumentSource : IDocumentSource
     /// <summary>
     /// The number of streams opened by <see cref="OpenRead"/>.
     /// </summary>
+    /// <summary>
+    /// How calls about a missing document fail. False, the default, behaves like Android's local
+    /// storage provider: the tree check that runs before every call throws an
+    /// IllegalArgumentException, which <c>SafDocumentSource</c> reports as an <see cref="IOException"/>.
+    /// True behaves like a provider without that check: a query returns null, and other calls
+    /// throw <see cref="FileNotFoundException"/>.
+    /// </summary>
+    public bool MissingDocumentsReturnNull { get; set; }
+
     public int OpenReadCount { get; private set; }
 
     /// <summary>
@@ -104,6 +113,17 @@ internal sealed class FakeDocumentSource : IDocumentSource
         var node = _nodes[id];
         if (node.ParentId != null)
             _nodes[node.ParentId].Children.Remove(id);
+        RemoveTree(id);
+    }
+
+    /// <summary>
+    /// Removes a document and everything inside it.
+    /// </summary>
+    /// <param name="id">The document's ID.</param>
+    private void RemoveTree(string id)
+    {
+        foreach (var child in _nodes[id].Children)
+            RemoveTree(child);
         _nodes.Remove(id);
     }
 
@@ -132,6 +152,7 @@ internal sealed class FakeDocumentSource : IDocumentSource
     {
         QueryCount++;
         ThrowIfFailing(nameof(QueryDocument), documentId);
+        ThrowIfMissing(documentId);
         if (!_nodes.TryGetValue(documentId, out var node))
             return null;
         return new DocumentDetails(
@@ -146,6 +167,7 @@ internal sealed class FakeDocumentSource : IDocumentSource
     {
         ListCount++;
         ThrowIfFailing(nameof(ListChildren), directoryDocumentId);
+        ThrowIfMissing(directoryDocumentId);
         if (!_nodes.TryGetValue(directoryDocumentId, out var node) || !node.IsDirectory)
             throw new FileNotFoundException($"No folder '{directoryDocumentId}'.");
 
@@ -160,6 +182,7 @@ internal sealed class FakeDocumentSource : IDocumentSource
     public Stream OpenRead(string documentId)
     {
         ThrowIfFailing(nameof(OpenRead), documentId);
+        ThrowIfMissing(documentId);
         if (!_nodes.TryGetValue(documentId, out var node) || node.IsDirectory)
             throw new FileNotFoundException($"No file '{documentId}'.");
 
@@ -183,6 +206,17 @@ internal sealed class FakeDocumentSource : IDocumentSource
         };
         _nodes[parentId].Children.Add(id);
         return id;
+    }
+
+    /// <summary>
+    /// Fails a call about a document that doesn't exist, the way Android's local storage provider
+    /// does, unless <see cref="MissingDocumentsReturnNull"/> is set.
+    /// </summary>
+    /// <param name="documentId">The document ID.</param>
+    private void ThrowIfMissing(string documentId)
+    {
+        if (!MissingDocumentsReturnNull && !_nodes.ContainsKey(documentId))
+            throw new IOException($"Failed to determine if {documentId} is child of {RootId}: missing file.");
     }
 
     /// <summary>
