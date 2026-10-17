@@ -10,13 +10,22 @@ namespace Saraka.SystemIO
 {
     public sealed partial class FileSystem
     {
+        /// <summary>
+        /// A directory in the file system.
+        /// </summary>
         private sealed class DirectoryEntry : Entry, IDirectory
         {
+            /// <summary>
+            /// Creates an entry for the directory at a Saraka path.
+            /// </summary>
+            /// <param name="owner">The file system the directory belongs to.</param>
+            /// <param name="path">The directory's Saraka path.</param>
             public DirectoryEntry(FileSystem owner, string path)
                 : base(owner, path)
             {
             }
 
+            /// <inheritdoc/>
             public Task<IEnumerable<IFileSystemEntry>> GetEntriesAsync(CancellationToken cancellationToken = default)
             {
                 return Complete(() =>
@@ -37,6 +46,7 @@ namespace Saraka.SystemIO
                 });
             }
 
+            /// <inheritdoc/>
             public Task<IDirectory> GetDirectoryAsync(string name, CancellationToken cancellationToken = default)
             {
                 return Complete(() =>
@@ -48,6 +58,7 @@ namespace Saraka.SystemIO
                 });
             }
 
+            /// <inheritdoc/>
             public Task<IFile> GetFileAsync(string name, CancellationToken cancellationToken = default)
             {
                 return Complete(() =>
@@ -59,6 +70,7 @@ namespace Saraka.SystemIO
                 });
             }
 
+            /// <inheritdoc/>
             public Task<IEnumerable<IFile>> EnumerateFilesAsync(string searchPattern = "*", CancellationToken cancellationToken = default)
             {
                 return Complete(() =>
@@ -70,6 +82,7 @@ namespace Saraka.SystemIO
                 });
             }
 
+            /// <inheritdoc/>
             public Task<IEnumerable<IDirectory>> EnumerateDirectoriesAsync(string searchPattern = "*", CancellationToken cancellationToken = default)
             {
                 return Complete(() =>
@@ -81,6 +94,7 @@ namespace Saraka.SystemIO
                 });
             }
 
+            /// <inheritdoc/>
             public Task<IDirectory> CreateDirectoryAsync(string name, CancellationToken cancellationToken = default)
             {
                 return Complete(() =>
@@ -91,6 +105,7 @@ namespace Saraka.SystemIO
                 });
             }
 
+            /// <inheritdoc/>
             public Task<IFile> CreateFileAsync(string name, CancellationToken cancellationToken = default)
             {
                 return Complete(() =>
@@ -101,6 +116,7 @@ namespace Saraka.SystemIO
                 });
             }
 
+            /// <inheritdoc/>
             public async Task<IFile> CreateFileAsync(string name, Stream content, CancellationToken cancellationToken = default)
             {
                 Owner.ThrowIfDisposed();
@@ -128,6 +144,7 @@ namespace Saraka.SystemIO
                 return new FileEntry(Owner, CombinePath(Path, name));
             }
 
+            /// <inheritdoc/>
             public Task DeleteAsync(bool recursive = false, CancellationToken cancellationToken = default)
             {
                 return Complete(() =>
@@ -144,14 +161,23 @@ namespace Saraka.SystemIO
                 });
             }
 
+            /// <inheritdoc/>
             protected override FileSystemInfo CreateInfo() => new DirectoryInfo(FullPath);
 
+            /// <inheritdoc/>
             protected override IOException NotFound() =>
                 new DirectoryNotFoundException($"The directory '{Path}' does not exist.");
 
+            /// <inheritdoc/>
             protected override void MoveOnDisk(string sourceFullPath, string destinationFullPath) =>
                 Directory.Move(sourceFullPath, destinationFullPath);
 
+            /// <summary>
+            /// Makes the checks for looking up a child by name.
+            /// </summary>
+            /// <param name="name">The child's name.</param>
+            /// <param name="cancellationToken">A token to cancel the operation.</param>
+            /// <returns>The child's host path.</returns>
             private string PrepareLookup(string name, CancellationToken cancellationToken)
             {
                 Owner.ThrowIfDisposed();
@@ -161,6 +187,12 @@ namespace Saraka.SystemIO
                 return Owner.ToFullPath(CombinePath(Path, name));
             }
 
+            /// <summary>
+            /// Makes the checks for listing children that match a pattern.
+            /// </summary>
+            /// <param name="searchPattern">The search pattern.</param>
+            /// <param name="cancellationToken">A token to cancel the operation.</param>
+            /// <returns>The System.IO object for this directory.</returns>
             private DirectoryInfo PrepareEnumeration(string searchPattern, CancellationToken cancellationToken)
             {
                 Owner.ThrowIfDisposed();
@@ -170,6 +202,12 @@ namespace Saraka.SystemIO
                 return new DirectoryInfo(FullPath);
             }
 
+            /// <summary>
+            /// Makes the checks for creating a child, including that the name isn't taken.
+            /// </summary>
+            /// <param name="name">The new child's name.</param>
+            /// <param name="cancellationToken">A token to cancel the operation.</param>
+            /// <returns>The new child's host path.</returns>
             private string PrepareCreate(string name, CancellationToken cancellationToken)
             {
                 Owner.ThrowIfDisposed();
@@ -183,11 +221,18 @@ namespace Saraka.SystemIO
                 return fullPath;
             }
 
+            /// <summary>
+            /// Creates a new, empty file and opens it for writing. Unlike creating with truncation,
+            /// this fails if the file appeared since the name was checked.
+            /// </summary>
+            /// <param name="fullPath">The new file's host path.</param>
+            /// <param name="name">The new file's name, for the error message.</param>
+            /// <returns>A writable stream over the new file.</returns>
+            /// <exception cref="InvalidOperationException">An entry with that name now exists.</exception>
             private static FileStream OpenNewFile(string fullPath, string name)
             {
                 try
                 {
-                    // CreateNew fails rather than truncating if the file appeared since the check.
                     return new FileStream(fullPath, FileMode.CreateNew, FileAccess.Write, FileShare.None,
                         StreamBufferSize, FileOptions.Asynchronous);
                 }
