@@ -47,22 +47,32 @@ namespace Saraka.Zip
         private const char Separator = '/';
         private const int CopyBufferSize = 81920;
 
-        // The low byte of a zip entry's external attributes holds its MS-DOS attributes.
+        /// <summary>
+        /// The low byte of a zip entry's external attributes, which holds its MS-DOS attributes.
+        /// </summary>
         private const int DosAttributeMask = 0xFF;
 
         private static readonly char[] PatternSeparators = { '/', '\\' };
 
-        private readonly ZipArchive archive;
-        private readonly DateTime archiveLastWriteTimeUtc;
-        private readonly DirectoryEntry root;
-        private bool disposed;
+        private readonly ZipArchive _archive;
+        private readonly DateTime _archiveLastWriteTimeUtc;
+        private readonly DirectoryEntry _root;
+        private bool _disposed;
 
+        /// <summary>
+        /// Creates a file system over an open archive.
+        /// </summary>
+        /// <param name="archive">The archive. The file system disposes it.</param>
+        /// <param name="canWrite">True if the archive is open for updating.</param>
+        /// <param name="archiveLastWriteTimeUtc">
+        /// The zip file's last-write time, reported by an empty root directory.
+        /// </param>
         private FileSystem(ZipArchive archive, bool canWrite, DateTime archiveLastWriteTimeUtc)
         {
-            this.archive = archive;
-            this.archiveLastWriteTimeUtc = archiveLastWriteTimeUtc;
+            _archive = archive;
+            _archiveLastWriteTimeUtc = archiveLastWriteTimeUtc;
             CanWrite = canWrite;
-            root = new DirectoryEntry(this, RootPath);
+            _root = new DirectoryEntry(this, RootPath);
         }
 
         /// <summary>
@@ -121,7 +131,7 @@ namespace Saraka.Zip
         }
 
         /// <inheritdoc/>
-        public IDirectory Root => root;
+        public IDirectory Root => _root;
 
         /// <inheritdoc/>
         /// <remarks>This is the value passed to <see cref="OpenAsync"/> and doesn't change.</remarks>
@@ -134,95 +144,158 @@ namespace Saraka.Zip
         /// </summary>
         public async ValueTask DisposeAsync()
         {
-            if (disposed)
+            if (_disposed)
                 return;
-            disposed = true;
+            _disposed = true;
 
             // ZipArchive implements IAsyncDisposable from .NET 10, but .NET Standard 2.1 can't
             // see that, so check at run time.
-            if (archive is IAsyncDisposable asyncDisposable)
+            if (_archive is IAsyncDisposable asyncDisposable)
                 await asyncDisposable.DisposeAsync().ConfigureAwait(false);
             else
-                archive.Dispose();
+                _archive.Dispose();
         }
 
-        private bool IsReadMode => archive.Mode == ZipArchiveMode.Read;
+        /// <summary>
+        /// True if the archive was opened read-only.
+        /// </summary>
+        private bool IsReadMode => _archive.Mode == ZipArchiveMode.Read;
 
+        /// <summary>
+        /// Throws if the file system has been disposed.
+        /// </summary>
+        /// <exception cref="ObjectDisposedException">The file system has been disposed.</exception>
         private void ThrowIfDisposed()
         {
-            if (disposed)
+            if (_disposed)
                 throw new ObjectDisposedException(nameof(FileSystem));
         }
 
+        /// <summary>
+        /// Throws if the file system is read-only.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">The file system is not writable.</exception>
         private void EnsureWritable()
         {
             if (!CanWrite)
                 throw new InvalidOperationException("The file system is not writable.");
         }
 
-        // Archive queries. Entry names here are zip names: no leading "/", and "" for the root.
-
+        /// <summary>
+        /// Converts a Saraka path to a zip entry name: no leading "/", and "" for the root.
+        /// </summary>
+        /// <param name="path">The Saraka path.</param>
+        /// <returns>The zip entry name.</returns>
         private static string ToEntryName(string path)
         {
             return path == RootPath ? string.Empty : path.Substring(1);
         }
 
+        /// <summary>
+        /// Gets the prefix that the names of a directory's contents start with.
+        /// </summary>
+        /// <param name="name">The directory's zip entry name, without a trailing "/".</param>
+        /// <returns>The name followed by "/", or "" for the root.</returns>
         private static string DirectoryPrefix(string name)
         {
             return name.Length == 0 ? string.Empty : name + Separator;
         }
 
+        /// <summary>
+        /// Gets the zip entry name of an entry's parent directory.
+        /// </summary>
+        /// <param name="name">The entry's zip entry name.</param>
+        /// <returns>The parent's zip entry name, or "" for the root.</returns>
         private static string GetParentName(string name)
         {
             var index = name.LastIndexOf(Separator);
             return index < 0 ? string.Empty : name.Substring(0, index);
         }
 
+        /// <summary>
+        /// Finds the zip entry for a file.
+        /// </summary>
+        /// <param name="name">The file's zip entry name.</param>
+        /// <returns>The first entry with that exact name, or null if there is none.</returns>
         private ZipArchiveEntry FindFileEntry(string name)
         {
-            return archive.Entries.FirstOrDefault(e => string.Equals(e.FullName, name, StringComparison.Ordinal));
+            return _archive.Entries.FirstOrDefault(e => string.Equals(e.FullName, name, StringComparison.Ordinal));
         }
 
+        /// <summary>
+        /// Finds a directory's own zip entry (its name followed by "/").
+        /// </summary>
+        /// <param name="name">The directory's zip entry name, without a trailing "/".</param>
+        /// <returns>The directory's own entry, or null if it has none or is the root.</returns>
         private ZipArchiveEntry FindDirectoryEntry(string name)
         {
             if (name.Length == 0)
                 return null;
             var entryName = name + Separator;
-            return archive.Entries.FirstOrDefault(e => string.Equals(e.FullName, entryName, StringComparison.Ordinal));
+            return _archive.Entries.FirstOrDefault(e => string.Equals(e.FullName, entryName, StringComparison.Ordinal));
         }
 
+        /// <summary>
+        /// Finds every zip entry whose name starts with a prefix.
+        /// </summary>
+        /// <param name="prefix">The prefix.</param>
+        /// <returns>The matching entries.</returns>
         private List<ZipArchiveEntry> FindEntriesWithPrefix(string prefix)
         {
-            return archive.Entries.Where(e => e.FullName.StartsWith(prefix, StringComparison.Ordinal)).ToList();
+            return _archive.Entries.Where(e => e.FullName.StartsWith(prefix, StringComparison.Ordinal)).ToList();
         }
 
+        /// <summary>
+        /// Determines whether a file exists.
+        /// </summary>
+        /// <param name="name">The file's zip entry name.</param>
+        /// <returns>True if the archive has an entry with that exact name.</returns>
         private bool FileExists(string name)
         {
             return FindFileEntry(name) != null;
         }
 
+        /// <summary>
+        /// Determines whether a directory exists: it has its own entry, or any entry is inside it.
+        /// </summary>
+        /// <param name="name">The directory's zip entry name, without a trailing "/".</param>
+        /// <returns>True if the directory exists. The root always exists.</returns>
         private bool DirectoryExists(string name)
         {
             if (name.Length == 0)
                 return true;
             var prefix = name + Separator;
-            return archive.Entries.Any(e => e.FullName.StartsWith(prefix, StringComparison.Ordinal));
+            return _archive.Entries.Any(e => e.FullName.StartsWith(prefix, StringComparison.Ordinal));
         }
 
+        /// <summary>
+        /// Determines whether a file or directory has a name.
+        /// </summary>
+        /// <param name="name">The zip entry name.</param>
+        /// <returns>True if a file or directory has that name.</returns>
         private bool EntryExists(string name)
         {
             return FileExists(name) || DirectoryExists(name);
         }
 
-        // Gives a directory its own entry if nothing else keeps it in existence, so that removing
-        // the last thing in a directory doesn't remove the directory too.
+        /// <summary>
+        /// Gives a directory its own entry if nothing else keeps it in existence, so that removing
+        /// the last thing in a directory doesn't remove the directory too.
+        /// </summary>
+        /// <param name="name">The directory's zip entry name, without a trailing "/".</param>
         private void KeepDirectory(string name)
         {
             if (!DirectoryExists(name))
-                archive.CreateEntry(name + Separator);
+                _archive.CreateEntry(name + Separator);
         }
 
-        // Zip has no rename, so moving copies each entry to its new name and deletes the original.
+        /// <summary>
+        /// Moves a file or directory to a new name. Zip has no rename, so this copies each entry to
+        /// its new name and deletes the original.
+        /// </summary>
+        /// <param name="oldName">The current zip entry name, without a trailing "/".</param>
+        /// <param name="newName">The new zip entry name, without a trailing "/".</param>
+        /// <param name="isDirectory">True to move a directory and everything in it.</param>
         private void MoveEntries(string oldName, string newName, bool isDirectory)
         {
             if (isDirectory)
@@ -243,9 +316,14 @@ namespace Saraka.Zip
             KeepDirectory(GetParentName(oldName));
         }
 
+        /// <summary>
+        /// Copies a zip entry, with its data, last-write time and attributes, to a new name.
+        /// </summary>
+        /// <param name="source">The entry to copy.</param>
+        /// <param name="newName">The new entry's name. A name ending in "/" copies no data.</param>
         private void CopyEntry(ZipArchiveEntry source, string newName)
         {
-            var target = archive.CreateEntry(newName);
+            var target = _archive.CreateEntry(newName);
             target.LastWriteTime = source.LastWriteTime;
             target.ExternalAttributes = source.ExternalAttributes;
             if (newName[newName.Length - 1] == Separator)
@@ -257,8 +335,13 @@ namespace Saraka.Zip
             }
         }
 
-        // Validation
-
+        /// <summary>
+        /// Determines whether a name is a valid bare name for this file system.
+        /// </summary>
+        /// <param name="name">The name.</param>
+        /// <returns>
+        /// False if the name is empty, "." or "..", or contains "/", "\" or a control character.
+        /// </returns>
         private static bool IsValidName(string name)
         {
             if (name.Length == 0 || name == "." || name == "..")
@@ -271,6 +354,13 @@ namespace Saraka.Zip
             return true;
         }
 
+        /// <summary>
+        /// Checks that a name is a valid bare name for this file system.
+        /// </summary>
+        /// <param name="name">The name to check.</param>
+        /// <param name="paramName">The name of the parameter it was passed as.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="name"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="name"/> isn't valid; see <see cref="IsValidName"/>.</exception>
         private static void ValidateName(string name, string paramName)
         {
             if (name == null)
@@ -281,6 +371,13 @@ namespace Saraka.Zip
                     paramName);
         }
 
+        /// <summary>
+        /// Checks that a search pattern is valid.
+        /// </summary>
+        /// <param name="searchPattern">The pattern to check.</param>
+        /// <param name="paramName">The name of the parameter it was passed as.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="searchPattern"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="searchPattern"/> contains a path separator.</exception>
         private static void ValidatePattern(string searchPattern, string paramName)
         {
             if (searchPattern == null)
@@ -289,25 +386,46 @@ namespace Saraka.Zip
                 throw new ArgumentException("The search pattern contains a path separator.", paramName);
         }
 
-        // Paths, attributes and times
-
+        /// <summary>
+        /// Builds the Saraka path of a child entry.
+        /// </summary>
+        /// <param name="parentPath">The parent directory's path.</param>
+        /// <param name="name">The child's name.</param>
+        /// <returns>The child's path.</returns>
         private static string CombinePath(string parentPath, string name)
         {
             return parentPath == RootPath ? RootPath + name : parentPath + Separator + name;
         }
 
+        /// <summary>
+        /// Gets the Saraka path of an entry's parent directory.
+        /// </summary>
+        /// <param name="path">The path of an entry other than the root.</param>
+        /// <returns>The parent directory's path.</returns>
         private static string GetParentPath(string path)
         {
             var index = path.LastIndexOf(Separator);
             return index == 0 ? RootPath : path.Substring(0, index);
         }
 
+        /// <summary>
+        /// Determines whether a path is the same as, or inside, another path.
+        /// </summary>
+        /// <param name="path">The path to test.</param>
+        /// <param name="ancestorPath">The possible ancestor.</param>
+        /// <returns>True if <paramref name="path"/> is <paramref name="ancestorPath"/> or one of its descendants.</returns>
         private static bool IsSameOrDescendant(string path, string ancestorPath)
         {
             return string.Equals(path, ancestorPath, StringComparison.Ordinal)
                 || path.StartsWith(ancestorPath + Separator, StringComparison.Ordinal);
         }
 
+        /// <summary>
+        /// Reads the attributes stored in a zip entry's external attributes.
+        /// </summary>
+        /// <param name="externalAttributes">The entry's external attributes.</param>
+        /// <param name="isDirectory">True if the entry is a directory.</param>
+        /// <returns>The MS-DOS attributes, with <see cref="FileAttributes.Directory"/> set for a directory.</returns>
         private static FileAttributes FromExternalAttributes(int externalAttributes, bool isDirectory)
         {
             var attributes = (FileAttributes)(externalAttributes & DosAttributeMask);
@@ -317,6 +435,13 @@ namespace Saraka.Zip
             return attributes == 0 ? FileAttributes.Normal : attributes;
         }
 
+        /// <summary>
+        /// Stores attributes in a zip entry's external attributes, keeping the Unix bits.
+        /// </summary>
+        /// <param name="externalAttributes">The entry's current external attributes.</param>
+        /// <param name="attributes">The attributes to store. Only the MS-DOS attributes are kept.</param>
+        /// <param name="isDirectory">True if the entry is a directory.</param>
+        /// <returns>The new external attributes.</returns>
         private static int ToExternalAttributes(int externalAttributes, FileAttributes attributes, bool isDirectory)
         {
             var dosAttributes = (int)attributes & DosAttributeMask & ~(int)(FileAttributes.Directory | FileAttributes.Normal);
@@ -325,8 +450,13 @@ namespace Saraka.Zip
             return (externalAttributes & ~DosAttributeMask) | dosAttributes;
         }
 
-        // Unspecified is treated as UTC and Local is converted, as the contract requires. Zip
-        // stores local times, so the value is given to the archive in local time.
+        /// <summary>
+        /// Converts a time to the form a zip entry stores. An Unspecified time is treated as UTC
+        /// and a Local time is converted, as the contract requires. Zip stores local times, so the
+        /// result is in local time.
+        /// </summary>
+        /// <param name="value">The time to convert.</param>
+        /// <returns>The time as a local <see cref="DateTimeOffset"/>.</returns>
         private static DateTimeOffset ToZipTime(DateTime value)
         {
             var utc = value.Kind == DateTimeKind.Unspecified
@@ -335,16 +465,30 @@ namespace Saraka.Zip
             return new DateTimeOffset(utc).ToLocalTime();
         }
 
+        /// <summary>
+        /// Converts a zip entry's time to UTC.
+        /// </summary>
+        /// <param name="value">The entry's time.</param>
+        /// <returns>The time in UTC.</returns>
         private static DateTime FromZipTime(DateTimeOffset value)
         {
             return value.UtcDateTime;
         }
 
+        /// <summary>
+        /// Creates the exception thrown when a name is already taken.
+        /// </summary>
+        /// <param name="name">The name.</param>
+        /// <returns>The exception.</returns>
         private static InvalidOperationException NameTaken(string name)
         {
             return new InvalidOperationException($"An entry named '{name}' already exists.");
         }
 
+        /// <summary>
+        /// Deletes a file, ignoring any failure. Used to clean up after a failed open.
+        /// </summary>
+        /// <param name="fullPath">The host path of the file.</param>
         private static void TryDeleteFile(string fullPath)
         {
             try
@@ -359,8 +503,13 @@ namespace Saraka.Zip
             }
         }
 
-        // Runs a synchronous operation and reports its outcome through a task, so that every
-        // exception, including argument exceptions, is observed when the task is awaited.
+        /// <summary>
+        /// Runs a synchronous operation and reports its outcome through a task, so that every
+        /// exception, including argument exceptions, is observed when the task is awaited.
+        /// </summary>
+        /// <typeparam name="T">The operation's result type.</typeparam>
+        /// <param name="operation">The operation.</param>
+        /// <returns>A completed, cancelled or faulted task.</returns>
         private static Task<T> Complete<T>(Func<T> operation)
         {
             try
@@ -377,6 +526,11 @@ namespace Saraka.Zip
             }
         }
 
+        /// <summary>
+        /// Runs a synchronous operation that has no result and reports its outcome through a task.
+        /// </summary>
+        /// <param name="operation">The operation.</param>
+        /// <returns>A completed, cancelled or faulted task.</returns>
         private static Task Complete(Action operation)
         {
             return Complete(() =>

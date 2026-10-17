@@ -10,18 +10,30 @@ namespace Saraka.Zip
 {
     public sealed partial class FileSystem
     {
+        /// <summary>
+        /// A file in the archive: an entry whose name doesn't end in "/".
+        /// </summary>
         private sealed class FileEntry : Entry, IFile
         {
-            // StreamReader skips a leading byte order mark only if it matches this encoding's
-            // preamble, so the encoding must have one. Byte order mark detection stays off, so a
-            // UTF-16 or UTF-32 mark never changes the decoding.
+            /// <summary>
+            /// The encoding for <see cref="ReadAllTextAsync"/>. StreamReader skips a leading byte
+            /// order mark only if it matches the encoding's preamble, so the encoding must have one.
+            /// Byte order mark detection stays off, so a UTF-16 or UTF-32 mark never changes the
+            /// decoding.
+            /// </summary>
             private static readonly Encoding Utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
 
+            /// <summary>
+            /// Creates an entry for the file at a Saraka path.
+            /// </summary>
+            /// <param name="owner">The file system the file belongs to.</param>
+            /// <param name="path">The file's Saraka path.</param>
             public FileEntry(FileSystem owner, string path)
                 : base(owner, path)
             {
             }
 
+            /// <inheritdoc/>
             public Task<long> GetLengthAsync(CancellationToken cancellationToken = default)
             {
                 return Complete(() =>
@@ -43,6 +55,7 @@ namespace Saraka.Zip
                 });
             }
 
+            /// <inheritdoc/>
             public async Task<byte[]> ReadAllBytesAsync(CancellationToken cancellationToken = default)
             {
                 PrepareRead(cancellationToken);
@@ -54,6 +67,7 @@ namespace Saraka.Zip
                 }
             }
 
+            /// <inheritdoc/>
             public async Task<string> ReadAllTextAsync(CancellationToken cancellationToken = default)
             {
                 PrepareRead(cancellationToken);
@@ -67,6 +81,7 @@ namespace Saraka.Zip
                 }
             }
 
+            /// <inheritdoc/>
             public Task<Stream> OpenReadAsync(CancellationToken cancellationToken = default)
             {
                 return Complete(() =>
@@ -87,6 +102,7 @@ namespace Saraka.Zip
                 });
             }
 
+            /// <inheritdoc/>
             public Task<Stream> OpenWriteAsync(CancellationToken cancellationToken = default)
             {
                 return Complete(() =>
@@ -100,6 +116,7 @@ namespace Saraka.Zip
                 });
             }
 
+            /// <inheritdoc/>
             public Task DeleteAsync(CancellationToken cancellationToken = default)
             {
                 return Complete(() =>
@@ -110,25 +127,35 @@ namespace Saraka.Zip
                 });
             }
 
+            /// <inheritdoc/>
             protected override bool Exists() => Owner.FileExists(EntryName);
 
+            /// <inheritdoc/>
             protected override IOException NotFound() =>
                 new FileNotFoundException($"The file '{Path}' does not exist.");
 
+            /// <inheritdoc/>
             protected override FileAttributes GetAttributesCore() =>
                 FromExternalAttributes(GetZipEntry().ExternalAttributes, isDirectory: false);
 
+            /// <inheritdoc/>
             protected override void SetAttributesCore(FileAttributes attributes)
             {
                 var entry = GetZipEntry();
                 entry.ExternalAttributes = ToExternalAttributes(entry.ExternalAttributes, attributes, isDirectory: false);
             }
 
+            /// <inheritdoc/>
             protected override DateTime GetLastWriteTimeCore() => FromZipTime(GetZipEntry().LastWriteTime);
 
+            /// <inheritdoc/>
             protected override void SetLastWriteTimeCore(DateTimeOffset lastWriteTime) =>
                 GetZipEntry().LastWriteTime = lastWriteTime;
 
+            /// <summary>
+            /// Gets this file's zip entry.
+            /// </summary>
+            /// <returns>The zip entry, or null if the file doesn't exist.</returns>
             private ZipArchiveEntry GetZipEntry() => Owner.FindFileEntry(EntryName);
         }
     }
