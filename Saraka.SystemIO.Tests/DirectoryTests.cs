@@ -18,6 +18,21 @@ public class DirectoryTests : FileSystemTestBase
         Assert.Empty(await Root.GetEntriesAsync());
     }
 
+    // Only Linux and macOS allow "\" in a file name, so on Windows there's nothing to test.
+    [Fact]
+    public async Task Enumerations_LeaveOutNamesThatCantBeLookedUp()
+    {
+        if (OperatingSystem.IsWindows())
+            return;
+        File.WriteAllText(HostPath("a\\b.txt"), "x");
+        Directory.CreateDirectory(HostPath("c\\d"));
+        File.WriteAllText(HostPath("ok.txt"), "x");
+
+        Assert.Equal(new[] { "ok.txt" }, (await Root.GetEntriesAsync()).Select(e => e.Name));
+        Assert.Equal(new[] { "ok.txt" }, (await Root.EnumerateFilesAsync()).Select(e => e.Name));
+        Assert.Empty(await Root.EnumerateDirectoriesAsync());
+    }
+
     [Fact]
     public async Task GetEntriesAsync_ReturnsFilesAndDirectoriesWithTheRightTypes()
     {

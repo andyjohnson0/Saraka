@@ -212,6 +212,18 @@ namespace Saraka.SystemIO
         }
 
         /// <summary>
+        /// Determines whether a name on disk can be presented as a Saraka name. On Linux and macOS
+        /// a name can contain "\", which <see cref="ValidateName"/> rejects, so such entries are
+        /// left out of directory contents to keep them consistent with lookups.
+        /// </summary>
+        /// <param name="name">The name on disk.</param>
+        /// <returns>True if the name is a valid Saraka name.</returns>
+        private static bool IsPresentableName(string name)
+        {
+            return name.IndexOfAny(InvalidNameChars) < 0;
+        }
+
+        /// <summary>
         /// Checks that a search pattern is valid.
         /// </summary>
         /// <param name="searchPattern">The pattern to check.</param>

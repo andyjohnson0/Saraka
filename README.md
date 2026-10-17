@@ -78,9 +78,19 @@ tell them apart with a type check or pattern match.
 `CreateDirectoryAsync` and the `CreateFileAsync` overloads fail if an entry with that name already
 exists. They never overwrite or truncate an existing file.
 
-Listings return entries in no particular order and include every entry, hidden and system entries
-included. In a search pattern, `*` matches zero or more characters and `?` matches exactly one.
-Whether matching is case-sensitive depends on the file system.
+`GetEntriesAsync`, `EnumerateFilesAsync` and `EnumerateDirectoriesAsync` return entries in no
+particular order and include every entry, hidden and system entries included. In a search
+pattern, `*` matches zero or more characters and `?` matches exactly one. Whether matching is
+case-sensitive depends on the file system.
+
+The only entries left out are ones the file system can't present:
+- an entry whose stored name isn't a valid name, for example because it contains `/`;
+- an entry whose name is the same as an earlier entry of the same kind, as the file system
+  compares names.
+
+A consumer can't find out about these through Saraka. They can't be found by name either, so the
+methods that return entries and the lookups by name always agree. Each implementation's section
+below says which stored names it can't present.
 
 ### `IFile : IFileSystemEntry`
 
@@ -120,6 +130,10 @@ conventions:
 | `OperationCanceledException` | The operation was cancelled. |
 | `ArgumentOutOfRangeException` | A time passed to `SetCreationTimeUtcAsync` or `SetLastWriteTimeUtcAsync` is outside the range the file system can store. |
 | `IOException` / `UnauthorizedAccessException` | The underlying storage failed or denied access. |
+
+Implementations report failures only as these .NET exceptions. An exception from the platform
+underneath, such as an Android or Java exception, is wrapped in the matching .NET exception, with
+the original as its `InnerException`. This applies to operations and to the streams they return.
 
 **Entries are locations, not handles.** An entry doesn't lock anything. Other code can change or
 remove the file or directory it refers to, and later operations on it then throw
@@ -194,6 +208,8 @@ await DumpAsync(fs.Root);
   `OpenAsync`.
 - Saraka paths use `/`. They're mapped to the host's own separator, so `/data/file.txt` is
   `C:\Photos\data\file.txt` on Windows. Entries outside the root directory can't be reached.
+- On Linux and macOS a name on disk can contain `\`. Such entries can't be Saraka names, so they're
+  left out of directory contents.
 - Names may not contain `\` or `/` on any platform, nor any character the host OS doesn't allow
   in file names.
 - Search patterns use simple matching, where `*` and `?` mean only what the contract says. That

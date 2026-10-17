@@ -35,6 +35,13 @@ namespace Saraka.Abstractions
     /// access.
     /// </para>
     /// <para>
+    /// Implementations report failures only as the .NET exceptions this contract lists. An
+    /// exception from the platform underneath, such as an Android or Java exception, is wrapped
+    /// in the matching .NET exception, with the original as its
+    /// <see cref="Exception.InnerException"/>. This applies to operations and to the streams they
+    /// return.
+    /// </para>
+    /// <para>
     /// Some file systems can't store every value. An implementation may store times with less
     /// precision or a smaller range, store only some attributes, or ignore values it can't store
     /// at all. Each implementation documents what it does.

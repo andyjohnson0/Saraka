@@ -37,6 +37,8 @@ namespace Saraka.SystemIO
                     foreach (var info in new DirectoryInfo(FullPath).EnumerateFileSystemInfos("*", ListingOptions))
                     {
                         cancellationToken.ThrowIfCancellationRequested();
+                        if (!IsPresentableName(info.Name))
+                            continue;
                         var childPath = CombinePath(Path, info.Name);
                         entries.Add(info is DirectoryInfo
                             ? (IFileSystemEntry)new DirectoryEntry(Owner, childPath)
@@ -77,6 +79,7 @@ namespace Saraka.SystemIO
                 {
                     var info = PrepareEnumeration(searchPattern, cancellationToken);
                     return (IEnumerable<IFile>)info.EnumerateFiles(searchPattern, ListingOptions)
+                        .Where(file => IsPresentableName(file.Name))
                         .Select(file => (IFile)new FileEntry(Owner, CombinePath(Path, file.Name)))
                         .ToList();
                 });
@@ -89,6 +92,7 @@ namespace Saraka.SystemIO
                 {
                     var info = PrepareEnumeration(searchPattern, cancellationToken);
                     return (IEnumerable<IDirectory>)info.EnumerateDirectories(searchPattern, ListingOptions)
+                        .Where(directory => IsPresentableName(directory.Name))
                         .Select(directory => (IDirectory)new DirectoryEntry(Owner, CombinePath(Path, directory.Name)))
                         .ToList();
                 });
