@@ -19,7 +19,7 @@ namespace Saraka.AndroidSaf
             private readonly DirectoryEntry? _parent;
 
             /// <summary>
-            /// Creates an entry for a document found in a listing.
+            /// Creates an entry for a document found in a folder.
             /// </summary>
             /// <param name="owner">The file system the entry belongs to.</param>
             /// <param name="parent">The directory the document was found in, or null for the root.</param>

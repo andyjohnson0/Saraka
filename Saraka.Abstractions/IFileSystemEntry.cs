@@ -22,8 +22,8 @@ namespace Saraka.Abstractions
     /// <para>
     /// The interfaces carry nullable annotations, and null is used in only one place:
     /// <see cref="Parent"/> is null for the root directory. Arguments may not be null (a null
-    /// argument throws <see cref="ArgumentNullException"/>), and results are never null. Listings
-    /// return an empty sequence when there's nothing to list, and lookups throw rather than return
+    /// argument throws <see cref="ArgumentNullException"/>), and results are never null. Methods that
+    /// return a directory's entries return an empty sequence when there are none, and lookups throw rather than return
     /// null when nothing is found.
     /// </para>
     /// <para>

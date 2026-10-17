@@ -199,7 +199,7 @@ namespace Saraka.AndroidSaf
             /// Lists the direct children. Display names that aren't valid names are skipped, and when
             /// two children of the same kind have names that differ only in case, the first in the
             /// provider's order is kept. That happens before matching and before the options are
-            /// applied, so lookups and every listing agree on which one is used. A child is hidden if
+            /// applied, so lookups and every enumeration agree on which one is used. A child is hidden if
             /// its name starts with a period.
             /// </summary>
             /// <param name="files">True to include files.</param>

@@ -150,7 +150,7 @@ namespace Saraka.AndroidSaf
         }
 
         /// <summary>
-        /// Reads a folder listing from a cursor over <see cref="ChildrenProjection"/>. Documents
+        /// Reads a folder's children from a cursor over <see cref="ChildrenProjection"/>. Documents
         /// without an ID are skipped, because they can't be opened.
         /// </summary>
         /// <param name="cursor">The cursor.</param>

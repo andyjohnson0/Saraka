@@ -312,7 +312,7 @@ namespace Saraka.Zip
             }
 
             /// <summary>
-            /// Makes the checks for listing children that match a pattern.
+            /// Makes the checks for enumerating children that match a pattern.
             /// </summary>
             /// <param name="searchPattern">The search pattern.</param>
             /// <param name="cancellationToken">A token to cancel the operation.</param>

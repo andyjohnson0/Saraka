@@ -156,8 +156,8 @@ Windows storage rejects `\` and other characters Windows doesn't allow in file n
 
 **Null.** `Saraka.Abstractions` has nullable annotations, and null appears in only one place:
 `Parent` is null for the root directory (`IDirectory? Parent`). Arguments may not be null, and a
-null argument throws `ArgumentNullException`. Results are never null: listings return an empty
-sequence when there's nothing to list, and `GetFileAsync` and `GetDirectoryAsync` throw rather than
+null argument throws `ArgumentNullException`. Results are never null: methods that return a directory's
+entries return an empty sequence when there are none, and `GetFileAsync` and `GetDirectoryAsync` throw rather than
 return null when nothing is found.
 
 **Exceptions.** Exceptions are reported through the returned task. Implementations follow these
@@ -265,7 +265,7 @@ await DumpAsync(fs.Root);
   defaults. It's wrong for a directory that Windows has made case-sensitive, or a case-sensitive
   macOS volume.
 - `DisplayName` is the root directory's name, or its full path for a drive root such as `C:\`.
-- Metadata operations, such as listings, attributes, times, create, delete and move, run
+- Metadata operations, such as reading a directory's entries, attributes, times, create, delete and move, run
   synchronously and return completed tasks. Stream reads, writes and copies are truly asynchronous.
 - Streams, including write streams, stay usable after the file system is disposed.
 
@@ -319,7 +319,7 @@ await using (var zip = await FileSystem.OpenAsync(@"C:\Photos\2026.zip", canWrit
   contain `.`, `..` or empty segments, or contain `\`.
 - If a zip file holds the same name twice, only the first entry is used.
 - If a zip file holds both a file `a` and entries inside a directory `a/`, both appear in
-  listings. `GetFileAsync("a")` finds the file and `GetDirectoryAsync("a")` finds the directory.
+  the directory's entries. `GetFileAsync("a")` finds the file and `GetDirectoryAsync("a")` finds the directory.
 
 **Where zip falls short of the contract.**
 - *Creation time.* Zip records only a last-write time. `GetCreationTimeUtcAsync` returns the
@@ -351,7 +351,7 @@ await using (var zip = await FileSystem.OpenAsync(@"C:\Photos\2026.zip", canWrit
   so operations from different threads run one at a time. Creating a file from a stream holds the
   lock while the content is copied.
 - *Asynchrony.* The methods are async, but most of the work behind them is synchronous. .NET
-  Standard 2.1 only exposes the synchronous zip APIs. So listing, lookup, attributes, times,
+  Standard 2.1 only exposes the synchronous zip APIs. So reading entries, lookup, attributes, times,
   creating, deleting, renaming and moving all run synchronously and return completed tasks.
   - Copying data to and from streams is truly asynchronous.
   - On .NET 10 and later, disposal uses the archive's asynchronous `DisposeAsync`, so saving
