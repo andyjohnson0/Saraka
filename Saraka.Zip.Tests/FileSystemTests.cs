@@ -155,7 +155,7 @@ public class FileSystemTests : ZipTestBase
         var cancelled = new CancellationToken(canceled: true);
         await CreateFileAsync(Root, "a.txt", "x");
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Root.GetEntriesAsync(cancelled));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Root.GetEntriesAsync(cancellationToken: cancelled));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Root.GetFileAsync("a.txt", cancelled));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Root.CreateDirectoryAsync("d", cancelled));
         Assert.DoesNotContain(await Root.GetEntriesAsync(), e => e.Name == "d");

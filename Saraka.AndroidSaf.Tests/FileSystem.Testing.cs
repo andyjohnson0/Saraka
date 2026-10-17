@@ -8,12 +8,9 @@ namespace Saraka.AndroidSaf
         /// Opens a file system over a document source, as the Android OpenAsync does over the
         /// content resolver.
         /// </summary>
-        internal static Task<FileSystem> OpenAsync(
-            IDocumentSource source,
-            FileSystemOptions? options = null,
-            CancellationToken cancellationToken = default)
+        internal static Task<FileSystem> OpenAsync(IDocumentSource source, CancellationToken cancellationToken = default)
         {
-            return OpenCoreAsync(source, options, cancellationToken);
+            return OpenCoreAsync(source, cancellationToken);
         }
     }
 }

@@ -22,16 +22,10 @@ namespace Saraka.AndroidSaf
     /// false, and write operations throw <see cref="InvalidOperationException"/>.
     /// </para>
     /// <para>
-    /// The <see cref="FileSystemOptions"/> passed to <see cref="OpenAsync"/> filter the entries
-    /// the file system presents. Unlike the general contract, which says listings include every
-    /// entry, entries the options exclude don't appear in listings and can't be found by name.
-    /// By default, hidden files and directories (names starting with a period) are excluded.
-    /// </para>
-    /// <para>
     /// Names are matched case-insensitively, in lookups and search patterns. If a directory holds
-    /// two entries of the same kind whose names differ only in case, only the first one listed is
-    /// used. Entries whose display names can't be Saraka names, such as names containing "/", are
-    /// ignored.
+    /// two entries of the same kind whose names differ only in case, only the first one in the
+    /// provider's order is used. Entries whose display names can't be Saraka names, such as names
+    /// containing "/", are ignored. A document is hidden if its name starts with a period.
     /// </para>
     /// <para>
     /// Each entry refers to its document by the provider's document ID. For the device's own
@@ -66,11 +60,6 @@ namespace Saraka.AndroidSaf
         private static readonly char[] PatternSeparators = { '/', '\\' };
 
         private readonly IDocumentSource _source;
-        private readonly SortField _sortField;
-        private readonly SortOrder _sortOrder;
-        private readonly List<string>? _fileTypes;
-        private readonly bool _includeHiddenFiles;
-        private readonly bool _includeHiddenFolders;
         private readonly DirectoryEntry _root;
         private bool _disposed;
 
@@ -78,15 +67,9 @@ namespace Saraka.AndroidSaf
         /// Creates a file system over a document source.
         /// </summary>
         /// <param name="source">The document source.</param>
-        /// <param name="options">The options, already validated. Their values are copied.</param>
-        private FileSystem(IDocumentSource source, FileSystemOptions options)
+        private FileSystem(IDocumentSource source)
         {
             _source = source;
-            _sortField = options.SortField;
-            _sortOrder = options.SortOrder;
-            _fileTypes = DocumentSelection.ExpandFileTypes(options.FileTypes);
-            _includeHiddenFiles = options.IncludeHiddenFiles;
-            _includeHiddenFolders = options.IncludeHiddenFolders;
             _root = new DirectoryEntry(this, null, string.Empty, source.RootDocumentId);
         }
 
@@ -122,25 +105,16 @@ namespace Saraka.AndroidSaf
         }
 
         /// <summary>
-        /// Opens a file system over a document source: validates the options and checks that the
-        /// root exists, is a folder and can be read. Used by the Android <c>OpenAsync</c>, and by
-        /// tests.
+        /// Opens a file system over a document source, checking that the root exists, is a folder
+        /// and can be read. Used by the Android <c>OpenAsync</c>, and by tests.
         /// </summary>
         /// <param name="source">The document source.</param>
-        /// <param name="options">The options, or null for the defaults.</param>
         /// <param name="cancellationToken">A token to cancel the operation.</param>
         /// <returns>The opened file system.</returns>
-        /// <exception cref="ArgumentException"><paramref name="options"/> holds an invalid value.</exception>
         /// <exception cref="DirectoryNotFoundException">The root folder doesn't exist.</exception>
-        private static async Task<FileSystem> OpenCoreAsync(
-            IDocumentSource source,
-            FileSystemOptions? options,
-            CancellationToken cancellationToken)
+        private static async Task<FileSystem> OpenCoreAsync(IDocumentSource source, CancellationToken cancellationToken)
         {
-            options ??= new FileSystemOptions();
-            ValidateOptions(options, nameof(options));
-
-            var fileSystem = new FileSystem(source, options);
+            var fileSystem = new FileSystem(source);
             // Reading the root's details checks that it exists, is a folder and can be read.
             var details = await fileSystem._root.GetDetailsAsync(cancellationToken).ConfigureAwait(false);
             fileSystem.DisplayName = details.DisplayName ?? string.Empty;
@@ -154,24 +128,6 @@ namespace Saraka.AndroidSaf
         private void ThrowIfDisposed()
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-        }
-
-        /// <summary>
-        /// Checks that the options hold valid values.
-        /// </summary>
-        /// <param name="options">The options.</param>
-        /// <param name="paramName">The name of the parameter they were passed as.</param>
-        /// <exception cref="ArgumentException">
-        /// A sort field or order isn't defined, or a file type is null or empty.
-        /// </exception>
-        private static void ValidateOptions(FileSystemOptions options, string paramName)
-        {
-            if (!Enum.IsDefined(options.SortField))
-                throw new ArgumentException("The sort field is not valid.", paramName);
-            if (!Enum.IsDefined(options.SortOrder))
-                throw new ArgumentException("The sort order is not valid.", paramName);
-            if (options.FileTypes != null && options.FileTypes.Any(string.IsNullOrEmpty))
-                throw new ArgumentException("The file types contain a null or empty value.", paramName);
         }
 
         /// <summary>

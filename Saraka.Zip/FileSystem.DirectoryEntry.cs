@@ -29,12 +29,13 @@ namespace Saraka.Zip
             }
 
             /// <inheritdoc/>
-            public Task<IEnumerable<IFileSystemEntry>> GetEntriesAsync(CancellationToken cancellationToken = default)
+            public Task<IEnumerable<IFileSystemEntry>> GetEntriesAsync(EntryOptions? options = null, CancellationToken cancellationToken = default)
             {
                 return Complete(() =>
                 {
                     PrepareRead(cancellationToken);
-                    return (IEnumerable<IFileSystemEntry>)ListChildren(files: true, directories: true, _ => true, cancellationToken);
+                    return (IEnumerable<IFileSystemEntry>)Select(
+                        ListChildren(files: true, directories: true, _ => true, cancellationToken), options);
                 });
             }
 
@@ -63,27 +64,48 @@ namespace Saraka.Zip
             }
 
             /// <inheritdoc/>
-            public Task<IEnumerable<IFile>> EnumerateFilesAsync(string searchPattern = "*", CancellationToken cancellationToken = default)
+            public Task<IEnumerable<IFile>> EnumerateFilesAsync(string searchPattern = "*", EntryOptions? options = null, CancellationToken cancellationToken = default)
             {
                 return Complete(() =>
                 {
                     PrepareEnumeration(searchPattern, cancellationToken);
-                    return (IEnumerable<IFile>)ListChildren(files: true, directories: false, Matcher(searchPattern), cancellationToken)
+                    return (IEnumerable<IFile>)Select(
+                            ListChildren(files: true, directories: false, Matcher(searchPattern), cancellationToken), options)
                         .Cast<IFile>()
                         .ToList();
                 });
             }
 
             /// <inheritdoc/>
-            public Task<IEnumerable<IDirectory>> EnumerateDirectoriesAsync(string searchPattern = "*", CancellationToken cancellationToken = default)
+            public Task<IEnumerable<IDirectory>> EnumerateDirectoriesAsync(string searchPattern = "*", EntryOptions? options = null, CancellationToken cancellationToken = default)
             {
                 return Complete(() =>
                 {
                     PrepareEnumeration(searchPattern, cancellationToken);
-                    return (IEnumerable<IDirectory>)ListChildren(files: false, directories: true, Matcher(searchPattern), cancellationToken)
+                    return (IEnumerable<IDirectory>)Select(
+                            ListChildren(files: false, directories: true, Matcher(searchPattern), cancellationToken), options)
                         .Cast<IDirectory>()
                         .ToList();
                 });
+            }
+
+            /// <summary>
+            /// Applies the options to this directory's children. An entry is hidden if its MS-DOS
+            /// Hidden bit is set. A directory without its own entry is never hidden, and its time is
+            /// the latest time of anything inside it.
+            /// </summary>
+            /// <param name="children">The children, in the archive's order.</param>
+            /// <param name="options">The options, or null.</param>
+            /// <returns>The selected children.</returns>
+            private static List<IFileSystemEntry> Select(List<IFileSystemEntry> children, EntryOptions? options)
+            {
+                return EntrySelection.Apply(
+                    children,
+                    options,
+                    child => child.Name,
+                    child => child is IDirectory,
+                    child => (((Entry)child).ReadAttributes() & FileAttributes.Hidden) != 0,
+                    child => ((Entry)child).ReadLastWriteTimeUtc());
             }
 
             /// <inheritdoc/>

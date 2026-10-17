@@ -18,16 +18,18 @@ namespace Saraka.Abstractions
     /// </para>
     /// <para>
     /// <see cref="GetEntriesAsync"/>, <see cref="EnumerateFilesAsync"/> and
-    /// <see cref="EnumerateDirectoriesAsync"/> return entries in no particular order and include
-    /// every entry, whatever its attributes, so hidden and system entries are included. In a
-    /// search pattern, "*" matches zero or more characters and "?" matches exactly one. Whether
-    /// matching is case-sensitive follows <see cref="IFileSystem.NameComparer"/>.
+    /// <see cref="EnumerateDirectoriesAsync"/> take <see cref="EntryOptions"/> that can leave out
+    /// hidden entries or files of other types, and sort the entries. Without options, they return
+    /// every entry, whatever its attributes, in no particular order. Lookups by name ignore the
+    /// options. In a search pattern, "*" matches zero or more characters and "?" matches exactly
+    /// one. Whether matching is case-sensitive follows <see cref="IFileSystem.NameComparer"/>.
     /// </para>
     /// <para>
-    /// The only entries left out are ones the file system can't present: an entry whose stored
-    /// name isn't a valid name (for example, it contains "/"), and an entry whose name is the
-    /// same as an earlier entry of the same kind, as <see cref="IFileSystem.NameComparer"/>
-    /// compares names. A consumer can't find out about these through Saraka. They can't be found by name either, so the
+    /// Apart from what the options exclude, the only entries left out are ones the file system
+    /// can't present: an entry whose stored name isn't a valid name (for example, it contains
+    /// "/"), and an entry whose name is the same as an entry of the same kind earlier in the
+    /// storage's own order, as <see cref="IFileSystem.NameComparer"/> compares names. A consumer
+    /// can't find out about these through Saraka. They can't be found by name either, so the
     /// methods that return entries and the lookups by name always agree. Each implementation
     /// documents which stored names it can't present.
     /// </para>
@@ -37,9 +39,13 @@ namespace Saraka.Abstractions
         /// <summary>
         /// Lists the files and subdirectories directly contained in this directory.
         /// </summary>
+        /// <param name="options">
+        /// Options that filter and sort the entries, or null for every entry in no particular order.
+        /// </param>
         /// <param name="cancellationToken">A token to cancel the operation.</param>
+        /// <exception cref="ArgumentException"><paramref name="options"/> holds an invalid value.</exception>
         /// <exception cref="DirectoryNotFoundException">This directory no longer exists.</exception>
-        Task<IEnumerable<IFileSystemEntry>> GetEntriesAsync(CancellationToken cancellationToken = default);
+        Task<IEnumerable<IFileSystemEntry>> GetEntriesAsync(EntryOptions? options = null, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Gets the subdirectory with the given name.
@@ -73,14 +79,18 @@ namespace Saraka.Abstractions
         /// <param name="searchPattern">
         /// The search pattern (e.g. "*.txt"). "*" matches every file.
         /// </param>
+        /// <param name="options">
+        /// Options that filter and sort the files, or null for every matching file in no particular
+        /// order.
+        /// </param>
         /// <param name="cancellationToken">A token to cancel the operation.</param>
         /// <exception cref="ArgumentNullException"><paramref name="searchPattern"/> is null.</exception>
         /// <exception cref="ArgumentException">
         /// <paramref name="searchPattern"/> contains "/" or is otherwise not valid in this file
-        /// system.
+        /// system, or <paramref name="options"/> holds an invalid value.
         /// </exception>
         /// <exception cref="DirectoryNotFoundException">This directory no longer exists.</exception>
-        Task<IEnumerable<IFile>> EnumerateFilesAsync(string searchPattern = "*", CancellationToken cancellationToken = default);
+        Task<IEnumerable<IFile>> EnumerateFilesAsync(string searchPattern = "*", EntryOptions? options = null, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Lists the subdirectories directly contained in this directory whose names match a search
@@ -89,14 +99,18 @@ namespace Saraka.Abstractions
         /// <param name="searchPattern">
         /// The search pattern (e.g. "data*"). "*" matches every subdirectory.
         /// </param>
+        /// <param name="options">
+        /// Options that filter and sort the subdirectories, or null for every matching
+        /// subdirectory in no particular order. File types don't apply to directories.
+        /// </param>
         /// <param name="cancellationToken">A token to cancel the operation.</param>
         /// <exception cref="ArgumentNullException"><paramref name="searchPattern"/> is null.</exception>
         /// <exception cref="ArgumentException">
         /// <paramref name="searchPattern"/> contains "/" or is otherwise not valid in this file
-        /// system.
+        /// system, or <paramref name="options"/> holds an invalid value.
         /// </exception>
         /// <exception cref="DirectoryNotFoundException">This directory no longer exists.</exception>
-        Task<IEnumerable<IDirectory>> EnumerateDirectoriesAsync(string searchPattern = "*", CancellationToken cancellationToken = default);
+        Task<IEnumerable<IDirectory>> EnumerateDirectoriesAsync(string searchPattern = "*", EntryOptions? options = null, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Creates an empty subdirectory.

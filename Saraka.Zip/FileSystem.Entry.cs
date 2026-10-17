@@ -198,6 +198,20 @@ namespace Saraka.Zip
             protected abstract DateTime GetLastWriteTimeCore();
 
             /// <summary>
+            /// Reads this entry's attributes without the usual checks, for selecting a directory's
+            /// children. The entry must exist.
+            /// </summary>
+            /// <returns>The attributes.</returns>
+            public FileAttributes ReadAttributes() => GetAttributesCore();
+
+            /// <summary>
+            /// Reads this entry's last-write time without the usual checks, for selecting a
+            /// directory's children. The entry must exist.
+            /// </summary>
+            /// <returns>The last-write time, in UTC.</returns>
+            public DateTime ReadLastWriteTimeUtc() => GetLastWriteTimeCore();
+
+            /// <summary>
             /// Stores this entry's last-write time, after the checks have been made.
             /// </summary>
             /// <param name="lastWriteTime">The time, as a local time for the archive.</param>

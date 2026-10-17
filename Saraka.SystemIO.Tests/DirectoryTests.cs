@@ -458,4 +458,63 @@ public class DirectoryTests : FileSystemTestBase
         if (OperatingSystem.IsWindows())
             File.SetAttributes(path, FileAttributes.Hidden | FileAttributes.System);
     }
+
+    // EntryOptions
+
+    [Fact]
+    public async Task EntryOptions_HiddenMeansTheFileSystemsHiddenAttribute()
+    {
+        CreateHiddenFile(".hidden.txt");
+        File.WriteAllText(HostPath("visible.txt"), "x");
+        File.WriteAllText(HostPath(".dotted.txt"), "x");
+        var options = new EntryOptions { IncludeHiddenFiles = false, SortField = EntrySortField.Name };
+
+        var names = (await Root.GetEntriesAsync(options)).Select(e => e.Name);
+
+        // A leading dot counts as hidden only where the platform says so (Linux and macOS).
+        var expected = OperatingSystem.IsWindows() ? new[] { ".dotted.txt", "visible.txt" } : new[] { "visible.txt" };
+        Assert.Equal(expected, names);
+    }
+
+    [Fact]
+    public async Task EntryOptions_SortByLastWriteTime_UsesTheTimesOnDisk()
+    {
+        foreach (var (name, day) in new[] { ("b.txt", 3), ("a.txt", 1), ("c.txt", 2) })
+        {
+            File.WriteAllText(HostPath(name), "x");
+            File.SetLastWriteTimeUtc(HostPath(name), new DateTime(2026, 1, day, 0, 0, 0, DateTimeKind.Utc));
+        }
+        Directory.CreateDirectory(HostPath("d"));
+        var options = new EntryOptions { SortField = EntrySortField.LastWriteTime, SortDirection = EntrySortDirection.Descending };
+
+        Assert.Equal(new[] { "d", "b.txt", "c.txt", "a.txt" }, (await Root.GetEntriesAsync(options)).Select(e => e.Name));
+    }
+
+    [Fact]
+    public async Task EntryOptions_ApplyToEnumerationsWithPatterns()
+    {
+        File.WriteAllText(HostPath("a2.jpg"), "x");
+        File.WriteAllText(HostPath("a1.JPG"), "x");
+        File.WriteAllText(HostPath("a3.png"), "x");
+        File.WriteAllText(HostPath("b1.jpg"), "x");
+        Directory.CreateDirectory(HostPath("a-dir"));
+        var options = new EntryOptions { FileTypes = new[] { "jpg" }, SortField = EntrySortField.Name };
+
+        Assert.Equal(new[] { "a1.JPG", "a2.jpg" }, (await Root.EnumerateFilesAsync("a*", options)).Select(e => e.Name));
+        Assert.Equal(new[] { "a-dir" }, (await Root.EnumerateDirectoriesAsync("a*", options)).Select(e => e.Name));
+    }
+
+    [Fact]
+    public async Task EntryOptions_Invalid_ThrowArgumentException()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() => Root.GetEntriesAsync(new EntryOptions { FileTypes = new[] { "" } }));
+    }
+
+    [Fact]
+    public async Task Lookups_IgnoreEntryOptionsAndFindHiddenFiles()
+    {
+        CreateHiddenFile(".hidden.txt");
+
+        Assert.Equal("/.hidden.txt", (await Root.GetFileAsync(".hidden.txt")).Path);
+    }
 }

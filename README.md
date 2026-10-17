@@ -21,8 +21,9 @@ Saraka means "directory" or "index" in Swahili.
 
 `Saraka.AndroidSaf` needs Android 13 (API level 33) or later.
 
-The solution also contains `Saraka.SystemIO.Tests`, `Saraka.Zip.Tests` and
-`Saraka.AndroidSaf.Tests`, xUnit test suites for the three implementations that target .NET 10.
+The solution also contains xUnit test suites that target .NET 10: `Saraka.Abstractions.Tests` for
+the shared helper, and `Saraka.SystemIO.Tests`, `Saraka.Zip.Tests` and `Saraka.AndroidSaf.Tests`
+for the three implementations.
 See [Testing](#testing).
 
 ## Interfaces
@@ -70,10 +71,12 @@ tell them apart with a type check or pattern match.
 
 ### `IDirectory : IFileSystemEntry`
 
-- `GetEntriesAsync()`: lists the files and subdirectories directly inside this directory.
+- `GetEntriesAsync(options = null)`: lists the files and subdirectories directly inside this
+  directory.
 - `GetDirectoryAsync(name)` / `GetFileAsync(name)`: get a direct child by name.
-- `EnumerateFilesAsync(searchPattern = "*")` / `EnumerateDirectoriesAsync(searchPattern = "*")`:
-  list direct children whose names match a pattern.
+- `EnumerateFilesAsync(searchPattern = "*", options = null)` /
+  `EnumerateDirectoriesAsync(searchPattern = "*", options = null)`: list direct children whose
+  names match a pattern.
 - `CreateDirectoryAsync(name)`: creates an empty subdirectory.
 - `CreateFileAsync(name)`: creates an empty file.
 - `CreateFileAsync(name, Stream content)`: creates a file, copying `content` from its current
@@ -85,15 +88,34 @@ tell them apart with a type check or pattern match.
 `CreateDirectoryAsync` and the `CreateFileAsync` overloads fail if an entry with that name already
 exists. They never overwrite or truncate an existing file.
 
-`GetEntriesAsync`, `EnumerateFilesAsync` and `EnumerateDirectoriesAsync` return entries in no
-particular order and include every entry, hidden and system entries included. In a search
-pattern, `*` matches zero or more characters and `?` matches exactly one. Whether matching is
-case-sensitive follows the file system's `NameComparer`.
+Without options, `GetEntriesAsync`, `EnumerateFilesAsync` and `EnumerateDirectoriesAsync` return
+every entry, hidden and system entries included, in no particular order. In a search pattern, `*`
+matches zero or more characters and `?` matches exactly one. Whether matching is case-sensitive
+follows the file system's `NameComparer`.
 
-The only entries left out are ones the file system can't present:
+**`EntryOptions`** filter and sort the entries for a single call. Lookups by name ignore them.
+- `FileTypes`: file name extensions without the period, such as `"jpeg"`. A file is included if
+  its name ends with `.` and one of them, ignoring case. No synonyms are added, so pass both
+  `"jpeg"` and `"jpg"` if you want both. `null`, the default, includes every file. An empty
+  collection includes none. Directories aren't affected.
+- `IncludeHiddenFiles` / `IncludeHiddenDirectories`: whether to include hidden entries. Both are
+  `true` by default. An entry is hidden if its attributes include `Hidden`, and each
+  implementation says when that is.
+- `SortField`: `None` (the default, no particular order), `Name` or `LastWriteTime`.
+  - When sorting, directories come before files.
+  - Names compare ignoring case, then with case to break ties.
+  - Equal times are ordered by name.
+- `SortDirection`: `Ascending` (the default) or `Descending`. Descending is the exact reverse of
+  ascending, except that directories still come first.
+
+Implementations apply the options with the shared helper `EntrySelection.Apply`, so they all
+filter and sort in the same way.
+
+Apart from what the options exclude, the only entries left out are ones the file system can't
+present:
 - an entry whose stored name isn't a valid name, for example because it contains `/`;
-- an entry whose name is the same as an earlier entry of the same kind, as the file system's
-  `NameComparer` compares names.
+- an entry whose name is the same as an entry of the same kind earlier in the storage's own order,
+  as the file system's `NameComparer` compares names.
 
 A consumer can't find out about these through Saraka. They can't be found by name either, so the
 methods that return entries and the lookups by name always agree. Each implementation's section
@@ -222,6 +244,8 @@ await DumpAsync(fs.Root);
 - Search patterns use simple matching, where `*` and `?` mean only what the contract says. That
   avoids the Windows quirk where `*.htm` also matches `.html` files. Case sensitivity follows the
   host file system.
+- An entry is hidden if the file system gives it the Hidden attribute. On Windows that's the
+  attribute itself. On Linux and macOS, .NET reports a name starting with `.` as hidden.
 - `NameComparer` ignores case on Windows and macOS and is case-sensitive elsewhere: the platform
   defaults. It's wrong for a directory that Windows has made case-sensitive, or a case-sensitive
   macOS volume.
@@ -293,6 +317,9 @@ await using (var zip = await FileSystem.OpenAsync(@"C:\Photos\2026.zip", canWrit
   setting its time or attributes does nothing.
 - *Attributes.* Only the MS-DOS attributes (read-only, hidden, system, archive) are stored. Unix
   permission bits already in an entry are preserved.
+- *Hidden entries.* An entry is hidden if its MS-DOS Hidden bit is set. A name starting with `.`
+  doesn't make an entry hidden, and archives made by Unix tools don't set the bit. A directory
+  without its own entry is never hidden.
 - *Rename and move.* Zip has no rename, so these copy every affected entry to its new name and
   delete the original. That costs time in proportion to the size of the data.
 - *Streams.* On a read-only file system, `OpenReadAsync` streams straight from the zip file. On a
@@ -318,16 +345,17 @@ await using (var zip = await FileSystem.OpenAsync(@"C:\Photos\2026.zip", canWrit
 (`Intent.ActionOpenDocumentTree`). The app must hold permission to read the tree.
 
 ```csharp
+using Saraka.Abstractions;
 using Saraka.AndroidSaf;
 
-var options = new FileSystemOptions
+await using var fs = await FileSystem.OpenAsync(context, treeUri);
+var images = await fs.Root.EnumerateFilesAsync(options: new EntryOptions
 {
-    FileTypes = new[] { "jpeg", "png" },
-    SortField = SortField.FileDate,
-    SortOrder = SortOrder.Descending,
-};
-await using var fs = await FileSystem.OpenAsync(context, treeUri, options);
-await DumpAsync(fs.Root);
+    FileTypes = new[] { "jpeg", "jpg", "png" },
+    IncludeHiddenFiles = false,
+    SortField = EntrySortField.LastWriteTime,
+    SortDirection = EntrySortDirection.Descending,
+});
 ```
 
 - The tree's top-level folder is the root directory. Paths are built from the documents' display
@@ -340,24 +368,15 @@ await DumpAsync(fs.Root);
 - Calls to the document provider block, so every operation runs on the thread pool. That keeps
   them off the UI thread.
 
-**Options.** `FileSystemOptions` is read once, when the file system is opened.
-- `SortField` and `SortOrder` set the order of listings: by name (ignoring case) or by
-  last-modified time, ascending or descending. Directories are listed before files.
-- `FileTypes` limits files to the given extensions, without the period (for example `"jpeg"`).
-  Matching ignores case, and `"jpeg"` also matches `.jpg` files. `null`, the default, includes
-  every file. Directories aren't affected.
-- `IncludeHiddenFiles` and `IncludeHiddenFolders` include entries whose names start with a
-  period. Both are `false` by default.
+- A document is hidden if its name starts with a period. `EntryOptions` use that to leave out
+  hidden files and directories.
+- Without `EntryOptions`, a directory's entries come in the provider's own order.
 
 **Where the SAF falls short of the contract.**
-- *Filtered listings.* The contract says listings include every entry. Here, entries the options
-  exclude don't appear in listings, and `GetFileAsync` and `GetDirectoryAsync` can't find them. By
-  default that includes hidden files and directories.
 - *Names.* Names are matched case-insensitively, in lookups and in search patterns, and
-  `NameComparer` is `StringComparer.OrdinalIgnoreCase`. If a directory
-  has two files, or two directories, whose names differ only in case, only the first in listing
-  order is used. Entries whose display names can't be Saraka names, such as names containing `/`,
-  are ignored.
+  `NameComparer` is `StringComparer.OrdinalIgnoreCase`. If a directory has two files, or two
+  directories, whose names differ only in case, only the first in the provider's order is used.
+  Entries whose display names can't be Saraka names, such as names containing `/`, are ignored.
 - *Entries and document IDs.* An entry refers to its document by the provider's document ID. For
   the device's own storage, the ID is derived from the document's location, so an entry behaves as
   the contract says. Other providers, such as cloud storage, may keep the same ID when a document
@@ -391,6 +410,8 @@ or later. The test projects target .NET 10, so building the whole solution needs
 `Saraka.AndroidSaf` also needs the .NET `android` workload (`dotnet workload install android`).
 
 ## Testing
+
+`Saraka.Abstractions.Tests` tests `EntrySelection`, the shared helper that applies `EntryOptions`.
 
 `Saraka.SystemIO.Tests` and `Saraka.Zip.Tests` hold the unit tests for the SystemIO and Zip
 implementations. They use xUnit and run against real temporary directories and zip files.

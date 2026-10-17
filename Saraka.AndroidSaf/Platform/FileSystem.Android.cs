@@ -22,24 +22,17 @@ namespace Saraka.AndroidSaf
         /// The tree URI, as returned by the system folder picker. The app must hold permission to
         /// read it.
         /// </param>
-        /// <param name="options">
-        /// Options that filter and order the entries, or null to use the defaults.
-        /// </param>
         /// <param name="cancellationToken">A token to cancel the operation.</param>
         /// <returns>The opened file system.</returns>
         /// <exception cref="ArgumentNullException">
         /// <paramref name="context"/> or <paramref name="treeUri"/> is null.
         /// </exception>
-        /// <exception cref="ArgumentException">
-        /// <paramref name="treeUri"/> is not a document tree URI, or <paramref name="options"/>
-        /// holds an invalid value.
-        /// </exception>
+        /// <exception cref="ArgumentException"><paramref name="treeUri"/> is not a document tree URI.</exception>
         /// <exception cref="DirectoryNotFoundException">The tree's top-level folder doesn't exist.</exception>
         /// <exception cref="UnauthorizedAccessException">The app doesn't have permission to read the tree.</exception>
         public static async Task<FileSystem> OpenAsync(
             Context context,
             Android.Net.Uri treeUri,
-            FileSystemOptions? options = null,
             CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(context);
@@ -47,7 +40,7 @@ namespace Saraka.AndroidSaf
             if (!DocumentsContract.IsTreeUri(treeUri))
                 throw new ArgumentException("The URI is not a document tree URI.", nameof(treeUri));
 
-            return await OpenCoreAsync(new SafDocumentSource(context, treeUri), options, cancellationToken)
+            return await OpenCoreAsync(new SafDocumentSource(context, treeUri), cancellationToken)
                 .ConfigureAwait(false);
         }
     }

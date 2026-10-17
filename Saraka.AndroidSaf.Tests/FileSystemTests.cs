@@ -59,64 +59,6 @@ public class FileSystemTests : AndroidSafTestBase
     }
 
     [Fact]
-    public async Task OpenAsync_NullOptions_UsesTheDefaults()
-    {
-        Source.AddFile(RootId, "b.txt");
-        Source.AddFile(RootId, "a.txt");
-        Source.AddFile(RootId, ".hidden.txt");
-        Source.AddFolder(RootId, ".hidden");
-
-        var root = await OpenRootAsync(null);
-
-        Assert.Equal(new[] { "a.txt", "b.txt" }, Names(await root.GetEntriesAsync()));
-    }
-
-    /// <summary>
-    /// The kinds of invalid options that <c>OpenAsync</c> must reject.
-    /// </summary>
-    public static TheoryData<string> InvalidOptions => new()
-    {
-        "SortField",
-        "SortOrder",
-        "NullFileType",
-        "EmptyFileType",
-    };
-
-    [Theory]
-    [MemberData(nameof(InvalidOptions))]
-    public async Task OpenAsync_InvalidOptions_ThrowsArgumentException(string invalid)
-    {
-        var options = invalid switch
-        {
-            "SortField" => new FileSystemOptions { SortField = (SortField)99 },
-            "SortOrder" => new FileSystemOptions { SortOrder = (SortOrder)99 },
-            "NullFileType" => new FileSystemOptions { FileTypes = new[] { "png", null! } },
-            "EmptyFileType" => new FileSystemOptions { FileTypes = new[] { "png", "" } },
-            _ => throw new ArgumentOutOfRangeException(nameof(invalid)),
-        };
-
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => OpenAsync(options));
-        Assert.Equal("options", ex.ParamName);
-    }
-
-    [Fact]
-    public async Task Options_ChangedAfterOpening_HaveNoEffect()
-    {
-        Source.AddFile(RootId, "a.png");
-        Source.AddFile(RootId, "b.gif");
-        Source.AddFile(RootId, ".c.png");
-        var fileTypes = new[] { "png" };
-        var options = new FileSystemOptions { FileTypes = fileTypes };
-        var root = await OpenRootAsync(options);
-
-        options.IncludeHiddenFiles = true;
-        options.FileTypes = null;
-        fileTypes[0] = "gif";
-
-        Assert.Equal(new[] { "a.png" }, Names(await root.GetEntriesAsync()));
-    }
-
-    [Fact]
     public async Task DisposeAsync_CanBeCalledTwice()
     {
         var fs = await OpenAsync();

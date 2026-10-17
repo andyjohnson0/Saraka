@@ -34,13 +34,13 @@ namespace Saraka.AndroidSaf
             protected override bool IsDirectory => true;
 
             /// <inheritdoc/>
-            public Task<IEnumerable<IFileSystemEntry>> GetEntriesAsync(CancellationToken cancellationToken = default)
+            public Task<IEnumerable<IFileSystemEntry>> GetEntriesAsync(EntryOptions? options = null, CancellationToken cancellationToken = default)
             {
                 return RunAsync(() =>
                 {
                     EnsureExists();
                     return (IEnumerable<IFileSystemEntry>)ListChildren(
-                        files: true, directories: true, _ => true, cancellationToken);
+                        files: true, directories: true, _ => true, options, cancellationToken);
                 }, cancellationToken);
             }
 
@@ -51,7 +51,7 @@ namespace Saraka.AndroidSaf
                 {
                     ValidateName(name, nameof(name));
                     EnsureExists();
-                    var match = ListChildren(files: false, directories: true, NameIs(name), cancellationToken)
+                    var match = ListChildren(files: false, directories: true, NameIs(name), null, cancellationToken)
                         .FirstOrDefault();
                     return (IDirectory)(match ?? throw new DirectoryNotFoundException($"'{Path}' has no subdirectory named '{name}'."));
                 }, cancellationToken);
@@ -64,35 +64,35 @@ namespace Saraka.AndroidSaf
                 {
                     ValidateName(name, nameof(name));
                     EnsureExists();
-                    var match = ListChildren(files: true, directories: false, NameIs(name), cancellationToken)
+                    var match = ListChildren(files: true, directories: false, NameIs(name), null, cancellationToken)
                         .FirstOrDefault();
                     return (IFile)(match ?? throw new FileNotFoundException($"'{Path}' has no file named '{name}'."));
                 }, cancellationToken);
             }
 
             /// <inheritdoc/>
-            public Task<IEnumerable<IFile>> EnumerateFilesAsync(string searchPattern = "*", CancellationToken cancellationToken = default)
+            public Task<IEnumerable<IFile>> EnumerateFilesAsync(string searchPattern = "*", EntryOptions? options = null, CancellationToken cancellationToken = default)
             {
                 return RunAsync(() =>
                 {
                     ValidatePattern(searchPattern, nameof(searchPattern));
                     EnsureExists();
                     return (IEnumerable<IFile>)ListChildren(
-                            files: true, directories: false, Matches(searchPattern), cancellationToken)
+                            files: true, directories: false, Matches(searchPattern), options, cancellationToken)
                         .Cast<IFile>()
                         .ToList();
                 }, cancellationToken);
             }
 
             /// <inheritdoc/>
-            public Task<IEnumerable<IDirectory>> EnumerateDirectoriesAsync(string searchPattern = "*", CancellationToken cancellationToken = default)
+            public Task<IEnumerable<IDirectory>> EnumerateDirectoriesAsync(string searchPattern = "*", EntryOptions? options = null, CancellationToken cancellationToken = default)
             {
                 return RunAsync(() =>
                 {
                     ValidatePattern(searchPattern, nameof(searchPattern));
                     EnsureExists();
                     return (IEnumerable<IDirectory>)ListChildren(
-                            files: false, directories: true, Matches(searchPattern), cancellationToken)
+                            files: false, directories: true, Matches(searchPattern), options, cancellationToken)
                         .Cast<IDirectory>()
                         .ToList();
                 }, cancellationToken);
@@ -133,46 +133,46 @@ namespace Saraka.AndroidSaf
                 new DirectoryNotFoundException($"The directory '{Path}' does not exist.", innerException);
 
             /// <summary>
-            /// Lists the direct children that the options allow, in the order the options give. When
-            /// two children of the same kind have names that differ only in case, the first is kept.
-            /// That happens before matching, so lookups and listings agree on which one is used.
+            /// Lists the direct children. Display names that aren't valid names are skipped, and when
+            /// two children of the same kind have names that differ only in case, the first in the
+            /// provider's order is kept. That happens before matching and before the options are
+            /// applied, so lookups and every listing agree on which one is used. A child is hidden if
+            /// its name starts with a period.
             /// </summary>
             /// <param name="files">True to include files.</param>
             /// <param name="directories">True to include directories.</param>
             /// <param name="match">Selects children by name.</param>
+            /// <param name="options">Options that filter and sort the children, or null.</param>
             /// <param name="cancellationToken">A token to cancel the operation.</param>
-            /// <returns>The children, directories first.</returns>
+            /// <returns>The children.</returns>
             private List<Entry> ListChildren(
-                bool files, bool directories, Func<string, bool> match, CancellationToken cancellationToken)
+                bool files, bool directories, Func<string, bool> match, EntryOptions? options, CancellationToken cancellationToken)
             {
                 var listing = FromSource(() => Owner._source.ListChildren(DocumentId));
-                var children = new List<Entry>();
-
-                if (directories)
+                var seenFolders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var seenFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var candidates = new List<DocumentEntry>();
+                foreach (var document in listing)
                 {
-                    var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    foreach (var folder in DocumentSelection.SelectFolders(
-                        listing, Owner._sortField, Owner._sortOrder, Owner._includeHiddenFolders))
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        if (IsValidName(folder.DisplayName) && seen.Add(folder.DisplayName) && match(folder.DisplayName))
-                            children.Add(new DirectoryEntry(Owner, this, folder.DisplayName, folder.DocumentId));
-                    }
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var name = document.DisplayName;
+                    if (!IsValidName(name) || !(document.IsDirectory ? seenFolders : seenFiles).Add(name))
+                        continue;
+                    if ((document.IsDirectory ? directories : files) && match(name))
+                        candidates.Add(document);
                 }
 
-                if (files)
-                {
-                    var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    foreach (var file in DocumentSelection.Select(
-                        listing, Owner._fileTypes, Owner._sortField, Owner._sortOrder, Owner._includeHiddenFiles))
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        if (IsValidName(file.DisplayName) && seen.Add(file.DisplayName) && match(file.DisplayName))
-                            children.Add(new FileEntry(Owner, this, file.DisplayName, file.DocumentId));
-                    }
-                }
-
-                return children;
+                return EntrySelection.Apply(
+                        candidates,
+                        options,
+                        document => document.DisplayName,
+                        document => document.IsDirectory,
+                        document => document.DisplayName.StartsWith('.'),
+                        document => FromUnixTime(document.LastModified))
+                    .Select(document => document.IsDirectory
+                        ? (Entry)new DirectoryEntry(Owner, this, document.DisplayName, document.DocumentId)
+                        : new FileEntry(Owner, this, document.DisplayName, document.DocumentId))
+                    .ToList();
             }
 
             /// <summary>
