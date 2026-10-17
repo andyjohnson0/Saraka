@@ -94,6 +94,26 @@ namespace Saraka.AndroidSaf
         /// </remarks>
         public string DisplayName { get; private set; } = string.Empty;
 
+        /// <inheritdoc/>
+        /// <remarks>
+        /// The provider can't look up a path directly, so this reads each folder along the path, from
+        /// the root down. It doesn't make a separate query to check that each folder exists.
+        /// </remarks>
+        public Task<IDirectory> GetDirectoryAsync(string path, CancellationToken cancellationToken = default)
+        {
+            return _root.FindDirectoryAsync(path, cancellationToken);
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// The provider can't look up a path directly, so this reads each folder along the path, from
+        /// the root down. It doesn't make a separate query to check that each folder exists.
+        /// </remarks>
+        public Task<IFile> GetFileAsync(string path, CancellationToken cancellationToken = default)
+        {
+            return _root.FindFileAsync(path, cancellationToken);
+        }
+
         /// <summary>
         /// Closes the file system. Operations on it or its entries then throw
         /// <see cref="ObjectDisposedException"/>. Streams that are already open are not closed.
@@ -154,6 +174,20 @@ namespace Saraka.AndroidSaf
                 throw new ArgumentException(
                     $"'{name}' is not a valid name. Names may not be empty, \".\" or \"..\", or contain \"/\".",
                     paramName);
+        }
+
+        /// <summary>
+        /// Splits a path into names, checking that the path is valid and that each name is valid.
+        /// </summary>
+        /// <param name="path">The path.</param>
+        /// <param name="paramName">The name of the parameter it was passed as.</param>
+        /// <returns>The names along the path.</returns>
+        private static string[] SplitPath(string? path, string paramName)
+        {
+            var names = SarakaPath.Split(path!, paramName);
+            foreach (var name in names)
+                ValidateName(name, paramName);
+            return names;
         }
 
         /// <summary>

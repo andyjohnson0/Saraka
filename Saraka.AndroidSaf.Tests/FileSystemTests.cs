@@ -164,4 +164,132 @@ public class FileSystemTests : AndroidSafTestBase
         Assert.Same(fs, dir.FileSystem);
         Assert.Same(fs, file.FileSystem);
     }
+
+    // Lookup by path
+
+    [Fact]
+    public async Task GetDirectoryAsync_Root_ReturnsTheRoot()
+    {
+        var fs = await OpenAsync();
+
+        Assert.Same(fs.Root, await fs.GetDirectoryAsync("/"));
+    }
+
+    [Fact]
+    public async Task PathLookups_IgnoreCaseAndUseTheDisplayNames()
+    {
+        var year = Source.AddFolder(RootId, "2026");
+        var month = Source.AddFolder(year, "03 March");
+        Source.AddFile(month, "IMG1.jpg", "data");
+        var fs = await OpenAsync();
+
+        var dir = await fs.GetDirectoryAsync("/2026/03 march");
+        var file = await fs.GetFileAsync("/2026/03 MARCH/img1.JPG");
+
+        Assert.Equal("/2026/03 March", dir.Path);
+        Assert.Equal("/2026/03 March/IMG1.jpg", file.Path);
+        Assert.Equal("data", await file.ReadAllTextAsync());
+        Assert.Equal("/2026", dir.Parent!.Path);
+    }
+
+    [Fact]
+    public async Task PathLookups_ReadEachFolderOnceWithoutExistenceQueries()
+    {
+        var year = Source.AddFolder(RootId, "2026");
+        var month = Source.AddFolder(year, "03 March");
+        Source.AddFile(month, "img1.jpg");
+        var fs = await OpenAsync();
+        var queriesAtOpen = Source.QueryCount;
+
+        await fs.GetFileAsync("/2026/03 March/img1.jpg");
+
+        Assert.Equal(3, Source.ListCount);
+        Assert.Equal(queriesAtOpen, Source.QueryCount);
+    }
+
+    [Fact]
+    public async Task PathLookups_FindHiddenEntries()
+    {
+        var hidden = Source.AddFolder(RootId, ".hidden");
+        Source.AddFile(hidden, ".a.txt");
+        var fs = await OpenAsync();
+
+        Assert.Equal("/.hidden/.a.txt", (await fs.GetFileAsync("/.hidden/.a.txt")).Path);
+    }
+
+    [Fact]
+    public async Task GetDirectoryAsync_Missing_ThrowsDirectoryNotFoundException()
+    {
+        Source.AddFile(RootId, "f.txt");
+        var fs = await OpenAsync();
+
+        await Assert.ThrowsAsync<DirectoryNotFoundException>(() => fs.GetDirectoryAsync("/missing"));
+        await Assert.ThrowsAsync<DirectoryNotFoundException>(() => fs.GetDirectoryAsync("/f.txt"));
+    }
+
+    [Fact]
+    public async Task GetFileAsync_Missing_ThrowsFileOrDirectoryNotFoundException()
+    {
+        Source.AddFolder(RootId, "d");
+        var fs = await OpenAsync();
+
+        await Assert.ThrowsAsync<FileNotFoundException>(() => fs.GetFileAsync("/d/missing.txt"));
+        await Assert.ThrowsAsync<FileNotFoundException>(() => fs.GetFileAsync("/d"));
+        await Assert.ThrowsAsync<DirectoryNotFoundException>(() => fs.GetFileAsync("/missing/a.txt"));
+    }
+
+    [Fact]
+    public async Task PathLookups_FolderRemovedOnTheWay_ThrowDirectoryNotFoundException()
+    {
+        var d = Source.AddFolder(RootId, "d");
+        var fs = await OpenAsync();
+        Source.Remove(d);
+
+        await Assert.ThrowsAsync<DirectoryNotFoundException>(() => fs.GetDirectoryAsync("/d"));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("a")]
+    [InlineData("/a/")]
+    [InlineData("/a//b")]
+    [InlineData("/a/../b")]
+    public async Task PathLookups_InvalidPath_ThrowArgumentException(string path)
+    {
+        var fs = await OpenAsync();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => fs.GetDirectoryAsync(path));
+        await Assert.ThrowsAsync<ArgumentException>(() => fs.GetFileAsync(path));
+    }
+
+    [Fact]
+    public async Task GetFileAsync_Root_ThrowsArgumentException()
+    {
+        var fs = await OpenAsync();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => fs.GetFileAsync("/"));
+    }
+
+    [Fact]
+    public async Task PathLookups_Null_ThrowArgumentNullExceptionThroughTheTask()
+    {
+        var fs = await OpenAsync();
+        Task? task = null;
+
+        var thrown = Record.Exception(() => { task = fs.GetFileAsync(null!); });
+
+        Assert.Null(thrown);
+        await Assert.ThrowsAsync<ArgumentNullException>(() => task!);
+        await Assert.ThrowsAsync<ArgumentNullException>(() => fs.GetDirectoryAsync(null!));
+    }
+
+    [Fact]
+    public async Task PathLookups_AfterDispose_ThrowObjectDisposedException()
+    {
+        var fs = await OpenAsync();
+        await fs.DisposeAsync();
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => fs.GetDirectoryAsync("/"));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => fs.GetFileAsync("/a.txt"));
+    }
 }

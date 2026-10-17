@@ -128,6 +128,69 @@ namespace Saraka.AndroidSaf
                 return RejectWriteAsync(cancellationToken);
             }
 
+            /// <summary>
+            /// Finds the directory at a path below this directory, which must be the root.
+            /// </summary>
+            /// <param name="path">An absolute path.</param>
+            /// <param name="cancellationToken">A token to cancel the operation.</param>
+            /// <returns>The directory.</returns>
+            public Task<IDirectory> FindDirectoryAsync(string path, CancellationToken cancellationToken)
+            {
+                return RunAsync(() =>
+                {
+                    var names = SplitPath(path, nameof(path));
+                    if (names.Length == 0)
+                    {
+                        EnsureExists();
+                        return (IDirectory)this;
+                    }
+                    return (IDirectory)WalkTo(names, names.Length, path, cancellationToken);
+                }, cancellationToken);
+            }
+
+            /// <summary>
+            /// Finds the file at a path below this directory, which must be the root.
+            /// </summary>
+            /// <param name="path">An absolute path.</param>
+            /// <param name="cancellationToken">A token to cancel the operation.</param>
+            /// <returns>The file.</returns>
+            public Task<IFile> FindFileAsync(string path, CancellationToken cancellationToken)
+            {
+                return RunAsync(() =>
+                {
+                    var names = SplitPath(path, nameof(path));
+                    if (names.Length == 0)
+                        throw new ArgumentException("\"/\" is the root directory, not a file.", nameof(path));
+                    var parent = WalkTo(names, names.Length - 1, path, cancellationToken);
+                    var file = parent.ListChildren(files: true, directories: false, NameIs(names[^1]), null, cancellationToken)
+                        .FirstOrDefault();
+                    return (IFile)(file ?? throw new FileNotFoundException($"There's no file at '{path}'."));
+                }, cancellationToken);
+            }
+
+            /// <summary>
+            /// Walks down from this directory through the named subdirectories, reading each one's
+            /// contents once.
+            /// </summary>
+            /// <param name="names">The names along the path.</param>
+            /// <param name="count">How many of the names to follow.</param>
+            /// <param name="path">The whole path, for error messages.</param>
+            /// <param name="cancellationToken">A token to cancel the operation.</param>
+            /// <returns>The directory reached.</returns>
+            /// <exception cref="DirectoryNotFoundException">A directory along the path doesn't exist.</exception>
+            private DirectoryEntry WalkTo(string[] names, int count, string path, CancellationToken cancellationToken)
+            {
+                var current = this;
+                for (var i = 0; i < count; i++)
+                {
+                    var next = current.ListChildren(files: false, directories: true, NameIs(names[i]), null, cancellationToken)
+                        .FirstOrDefault();
+                    current = (DirectoryEntry?)next
+                        ?? throw new DirectoryNotFoundException($"There's no directory at '/{string.Join("/", names, 0, i + 1)}' (looking for '{path}').");
+                }
+                return current;
+            }
+
             /// <inheritdoc/>
             protected override IOException NotFound(Exception? innerException) =>
                 new DirectoryNotFoundException($"The directory '{Path}' does not exist.", innerException);

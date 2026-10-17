@@ -45,6 +45,12 @@ An open file system. Everything else is reached from its root directory.
   names or paths from the file system.
 - `DisplayName`: a name people can recognise, such as the name of the folder or zip file behind
   the file system. It's for display only and isn't part of any path. It may be empty.
+- `GetDirectoryAsync(path)` / `GetFileAsync(path)`: get an entry by its absolute path, such as
+  `/data/photos/img1.jpg`. `/` is the root directory.
+  - Names along the path are compared with `NameComparer`, and lookups ignore `EntryOptions`.
+  - A missing file gives `FileNotFoundException`. A missing directory, including one along the
+    path, gives `DirectoryNotFoundException`.
+  - `SarakaPath.Split` checks a path's syntax and splits it into names.
 
 Always dispose the file system with `await using` or `DisposeAsync` when you've finished with
 it. Some implementations, such as `Saraka.Zip`, only write changes to storage at that point. After
@@ -367,6 +373,9 @@ var images = await fs.Root.EnumerateFilesAsync(options: new EntryOptions
   if the tree's folder doesn't exist, and `UnauthorizedAccessException` if the app can't read it.
 - Calls to the document provider block, so every operation runs on the thread pool. That keeps
   them off the UI thread.
+- The provider can't look up a path directly, so `GetDirectoryAsync(path)` and
+  `GetFileAsync(path)` read each folder along the path, from the root down. They don't make a
+  separate query to check that each folder exists.
 
 - A document is hidden if its name starts with a period. `EntryOptions` use that to leave out
   hidden files and directories.

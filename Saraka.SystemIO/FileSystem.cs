@@ -122,6 +122,42 @@ namespace Saraka.SystemIO
         /// <remarks>The name of the root directory on disk, or its full path if it has no name (a drive root).</remarks>
         public string DisplayName { get; }
 
+        /// <inheritdoc/>
+        /// <remarks>The path is checked on disk directly, without reading each directory along it.</remarks>
+        public Task<IDirectory> GetDirectoryAsync(string path, CancellationToken cancellationToken = default)
+        {
+            return Complete(() =>
+            {
+                ThrowIfDisposed();
+                var names = SplitPath(path, nameof(path));
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!Directory.Exists(ToFullPath(path)))
+                    throw new DirectoryNotFoundException($"There's no directory at '{path}'.");
+                return names.Length == 0 ? (IDirectory)_root : new DirectoryEntry(this, path);
+            });
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>The path is checked on disk directly, without reading each directory along it.</remarks>
+        public Task<IFile> GetFileAsync(string path, CancellationToken cancellationToken = default)
+        {
+            return Complete(() =>
+            {
+                ThrowIfDisposed();
+                var names = SplitPath(path, nameof(path));
+                if (names.Length == 0)
+                    throw new ArgumentException("\"/\" is the root directory, not a file.", nameof(path));
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!File.Exists(ToFullPath(path)))
+                {
+                    if (!Directory.Exists(ToFullPath(GetParentPath(path))))
+                        throw new DirectoryNotFoundException($"There's no directory at '{GetParentPath(path)}'.");
+                    throw new FileNotFoundException($"There's no file at '{path}'.");
+                }
+                return (IFile)new FileEntry(this, path);
+            });
+        }
+
         /// <summary>
         /// Closes the file system. Operations on it or its entries then throw
         /// <see cref="ObjectDisposedException"/>. Streams that are already open are not closed.
@@ -229,6 +265,21 @@ namespace Saraka.SystemIO
             if (name.IndexOfAny(InvalidNameChars) >= 0)
                 throw new ArgumentException(
                     "The name contains a path separator or a character that isn't valid in a file name.", paramName);
+        }
+
+        /// <summary>
+        /// Splits a path into names, checking that the path is valid and that each name is valid
+        /// in this file system.
+        /// </summary>
+        /// <param name="path">The path.</param>
+        /// <param name="paramName">The name of the parameter it was passed as.</param>
+        /// <returns>The names along the path.</returns>
+        private static string[] SplitPath(string? path, string paramName)
+        {
+            var names = SarakaPath.Split(path!, paramName);
+            foreach (var name in names)
+                ValidateName(name, paramName);
+            return names;
         }
 
         /// <summary>

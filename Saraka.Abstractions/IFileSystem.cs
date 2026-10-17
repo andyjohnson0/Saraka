@@ -1,4 +1,7 @@
 using System;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Saraka.Abstractions
 {
@@ -46,5 +49,38 @@ namespace Saraka.Abstractions
         /// empty string if the file system has no suitable name.
         /// </summary>
         string DisplayName { get; }
+
+        /// <summary>
+        /// Gets the directory at a path. Names along the path are compared using
+        /// <see cref="NameComparer"/>, as by <see cref="IDirectory.GetDirectoryAsync"/>.
+        /// </summary>
+        /// <param name="path">
+        /// An absolute path, such as "/data/photos". "/" is the root directory.
+        /// </param>
+        /// <param name="cancellationToken">A token to cancel the operation.</param>
+        /// <returns>The directory.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="path"/> is null.</exception>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="path"/> isn't a valid path (see <see cref="SarakaPath.Split"/>), or a
+        /// name along it isn't valid in this file system.
+        /// </exception>
+        /// <exception cref="DirectoryNotFoundException">There's no directory at that path.</exception>
+        Task<IDirectory> GetDirectoryAsync(string path, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Gets the file at a path. Names along the path are compared using
+        /// <see cref="NameComparer"/>, as by <see cref="IDirectory.GetFileAsync"/>.
+        /// </summary>
+        /// <param name="path">An absolute path, such as "/data/photos/img1.jpg".</param>
+        /// <param name="cancellationToken">A token to cancel the operation.</param>
+        /// <returns>The file.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="path"/> is null.</exception>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="path"/> isn't a valid path (see <see cref="SarakaPath.Split"/>), is "/",
+        /// or has a name that isn't valid in this file system.
+        /// </exception>
+        /// <exception cref="FileNotFoundException">There's no file at that path.</exception>
+        /// <exception cref="DirectoryNotFoundException">A directory along the path doesn't exist.</exception>
+        Task<IFile> GetFileAsync(string path, CancellationToken cancellationToken = default);
     }
 }

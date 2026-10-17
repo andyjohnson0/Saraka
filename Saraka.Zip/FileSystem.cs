@@ -147,6 +147,41 @@ namespace Saraka.Zip
         /// <remarks>The zip file's name, such as "photos.zip".</remarks>
         public string DisplayName { get; }
 
+        /// <inheritdoc/>
+        public Task<IDirectory> GetDirectoryAsync(string path, CancellationToken cancellationToken = default)
+        {
+            return Complete(() =>
+            {
+                ThrowIfDisposed();
+                var names = SplitPath(path, nameof(path));
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!DirectoryExists(ToEntryName(path)))
+                    throw new DirectoryNotFoundException($"There's no directory at '{path}'.");
+                return names.Length == 0 ? (IDirectory)_root : new DirectoryEntry(this, path);
+            });
+        }
+
+        /// <inheritdoc/>
+        public Task<IFile> GetFileAsync(string path, CancellationToken cancellationToken = default)
+        {
+            return Complete(() =>
+            {
+                ThrowIfDisposed();
+                var names = SplitPath(path, nameof(path));
+                if (names.Length == 0)
+                    throw new ArgumentException("\"/\" is the root directory, not a file.", nameof(path));
+                cancellationToken.ThrowIfCancellationRequested();
+                var entryName = ToEntryName(path);
+                if (!FileExists(entryName))
+                {
+                    if (!DirectoryExists(GetParentName(entryName)))
+                        throw new DirectoryNotFoundException($"There's no directory at '{GetParentPath(path)}'.");
+                    throw new FileNotFoundException($"There's no file at '{path}'.");
+                }
+                return (IFile)new FileEntry(this, path);
+            });
+        }
+
         /// <summary>
         /// Closes the file system, writing any changes to the zip file. Operations on the file
         /// system or its entries then throw <see cref="ObjectDisposedException"/>, and streams
@@ -379,6 +414,21 @@ namespace Saraka.Zip
                 throw new ArgumentException(
                     $"'{name}' is not a valid name. Names may not be empty, \".\" or \"..\", or contain \"/\", \"\\\" or control characters.",
                     paramName);
+        }
+
+        /// <summary>
+        /// Splits a path into names, checking that the path is valid and that each name is valid
+        /// in this file system.
+        /// </summary>
+        /// <param name="path">The path.</param>
+        /// <param name="paramName">The name of the parameter it was passed as.</param>
+        /// <returns>The names along the path.</returns>
+        private static string[] SplitPath(string? path, string paramName)
+        {
+            var names = SarakaPath.Split(path!, paramName);
+            foreach (var name in names)
+                ValidateName(name, paramName);
+            return names;
         }
 
         /// <summary>

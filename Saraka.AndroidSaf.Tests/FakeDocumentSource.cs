@@ -46,6 +46,16 @@ internal sealed class FakeDocumentSource : IDocumentSource
     public int OpenReadCount { get; private set; }
 
     /// <summary>
+    /// The number of calls to <see cref="QueryDocument"/>.
+    /// </summary>
+    public int QueryCount { get; private set; }
+
+    /// <summary>
+    /// The number of calls to <see cref="ListChildren"/>.
+    /// </summary>
+    public int ListCount { get; private set; }
+
+    /// <summary>
     /// Adds a folder.
     /// </summary>
     /// <param name="parentId">The parent folder's ID.</param>
@@ -120,6 +130,7 @@ internal sealed class FakeDocumentSource : IDocumentSource
     /// <inheritdoc/>
     public DocumentDetails? QueryDocument(string documentId)
     {
+        QueryCount++;
         ThrowIfFailing(nameof(QueryDocument), documentId);
         if (!_nodes.TryGetValue(documentId, out var node))
             return null;
@@ -133,6 +144,7 @@ internal sealed class FakeDocumentSource : IDocumentSource
     /// <inheritdoc/>
     public IReadOnlyList<DocumentEntry> ListChildren(string directoryDocumentId)
     {
+        ListCount++;
         ThrowIfFailing(nameof(ListChildren), directoryDocumentId);
         if (!_nodes.TryGetValue(directoryDocumentId, out var node) || !node.IsDirectory)
             throw new FileNotFoundException($"No folder '{directoryDocumentId}'.");
