@@ -57,7 +57,7 @@ namespace Saraka.Zip
 
         private readonly ZipArchive _archive;
         private readonly SemaphoreSlim _lock = new SemaphoreSlim(1, 1);
-        private readonly string _zipPath;
+        private readonly string? _zipPath;
         private readonly DateTime _archiveLastWriteTimeUtc;
         private readonly DirectoryEntry _root;
         private volatile bool _disposed;
@@ -70,12 +70,13 @@ namespace Saraka.Zip
         /// <param name="archiveLastWriteTimeUtc">
         /// The zip file's last-write time, reported by an empty root directory.
         /// </param>
-        /// <param name="zipPath">The zip file's full path.</param>
-        private FileSystem(ZipArchive archive, bool canWrite, DateTime archiveLastWriteTimeUtc, string zipPath)
+        /// <param name="displayName">The file system's display name.</param>
+        /// <param name="zipPath">The zip file's full path, or null if it was opened from a stream.</param>
+        private FileSystem(ZipArchive archive, bool canWrite, DateTime archiveLastWriteTimeUtc, string displayName, string? zipPath)
         {
             _archive = archive;
             _zipPath = zipPath;
-            DisplayName = Path.GetFileName(zipPath);
+            DisplayName = displayName;
             _archiveLastWriteTimeUtc = archiveLastWriteTimeUtc;
             CanWrite = canWrite;
             _root = new DirectoryEntry(this, RootPath);
@@ -124,7 +125,8 @@ namespace Saraka.Zip
                 {
                     var lastWriteTimeUtc = File.GetLastWriteTimeUtc(fullPath);
                     var mode = canWrite ? ZipArchiveMode.Update : ZipArchiveMode.Read;
-                    return new FileSystem(new ZipArchive(stream, mode, leaveOpen: false), canWrite, lastWriteTimeUtc, fullPath);
+                    return new FileSystem(
+                        new ZipArchive(stream, mode, leaveOpen: false), canWrite, lastWriteTimeUtc, Path.GetFileName(fullPath), fullPath);
                 }
                 catch
                 {
@@ -136,11 +138,65 @@ namespace Saraka.Zip
             });
         }
 
+        /// <summary>
+        /// Opens a zip file from a stream as a read-only file system, for a zip file that has no
+        /// path, such as a document from a content provider.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The file system takes ownership of <paramref name="stream"/>: every read goes through it,
+        /// and it's disposed when the file system is. If this method throws, it has already
+        /// disposed <paramref name="stream"/>.
+        /// </para>
+        /// <para>
+        /// The stream can't be shared by parallel reads, so <see cref="IFile.OpenReadAsync"/>
+        /// returns a copy of the file's contents in memory, as it does on a writable file system.
+        /// An empty root directory reports <see cref="DateTime.UnixEpoch"/> as its last-write time,
+        /// because a stream has no time.
+        /// </para>
+        /// </remarks>
+        /// <param name="stream">The zip file's contents. Must be readable and seekable.</param>
+        /// <param name="displayName">The file system's display name, such as "photos.zip".</param>
+        /// <param name="cancellationToken">A token to cancel the operation.</param>
+        /// <returns>The opened file system.</returns>
+        /// <exception cref="ArgumentNullException">
+        /// <paramref name="stream"/> or <paramref name="displayName"/> is null.
+        /// </exception>
+        /// <exception cref="ArgumentException"><paramref name="stream"/> can't be read or can't seek.</exception>
+        /// <exception cref="InvalidDataException">The stream is not a valid zip file.</exception>
+        public static Task<FileSystem> OpenAsync(Stream stream, string displayName, CancellationToken cancellationToken = default)
+        {
+            return Complete(() =>
+            {
+                if (stream == null)
+                    throw new ArgumentNullException(nameof(stream));
+                try
+                {
+                    if (displayName == null)
+                        throw new ArgumentNullException(nameof(displayName));
+                    if (!stream.CanRead || !stream.CanSeek)
+                        throw new ArgumentException("The stream must be readable and seekable.", nameof(stream));
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    var archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: false);
+                    return new FileSystem(archive, canWrite: false, DateTime.UnixEpoch, displayName, zipPath: null);
+                }
+                catch
+                {
+                    stream.Dispose();
+                    throw;
+                }
+            });
+        }
+
         /// <inheritdoc/>
         public IDirectory Root => _root;
 
         /// <inheritdoc/>
-        /// <remarks>This is the value passed to <see cref="OpenAsync"/> and doesn't change.</remarks>
+        /// <remarks>
+        /// This is the value passed to <see cref="OpenAsync(string, bool, CancellationToken)"/>, or false
+        /// for a file system opened from a stream, and doesn't change.
+        /// </remarks>
         public bool CanWrite { get; }
 
         /// <inheritdoc/>
@@ -277,13 +333,14 @@ namespace Saraka.Zip
         /// they couldn't be read in parallel. A stream with its own archive also stays usable after
         /// the file system is disposed.
         /// </summary>
+        /// <param name="zipPath">The zip file's full path.</param>
         /// <param name="entryName">The file's zip entry name.</param>
         /// <returns>A read-only stream that closes its archive when it's disposed.</returns>
         /// <exception cref="FileNotFoundException">The file isn't in the zip file.</exception>
-        private Stream OpenIndependentReadStream(string entryName)
+        private static Stream OpenIndependentReadStream(string zipPath, string entryName)
         {
             var archive = new ZipArchive(
-                new FileStream(_zipPath, FileMode.Open, FileAccess.Read, FileShare.Read),
+                new FileStream(zipPath, FileMode.Open, FileAccess.Read, FileShare.Read),
                 ZipArchiveMode.Read,
                 leaveOpen: false);
             try

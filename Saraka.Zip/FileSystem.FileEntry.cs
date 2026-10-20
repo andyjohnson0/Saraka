@@ -81,21 +81,22 @@ namespace Saraka.Zip
 
             /// <inheritdoc/>
             /// <remarks>
-            /// On a read-only file system the stream has its own file handle and reads straight from
-            /// the zip file. On a writable one it's a read-only copy of the file's contents in memory.
-            /// Either way it can be read in parallel with other operations, and it stays usable after
-            /// the file system is disposed.
+            /// On a read-only file system opened from a path, the stream has its own file handle and
+            /// reads straight from the zip file. On a writable one, or one opened from a stream, it's
+            /// a read-only copy of the file's contents in memory. Either way it can be read in
+            /// parallel with other operations, and it stays usable after the file system is disposed.
             /// </remarks>
             public Task<Stream> OpenReadAsync(CancellationToken cancellationToken = default)
             {
                 return Owner.Locked(() =>
                 {
                     PrepareRead(cancellationToken);
-                    if (Owner.IsReadMode)
-                        return Owner.OpenIndependentReadStream(EntryName);
+                    if (Owner.IsReadMode && Owner._zipPath != null)
+                        return OpenIndependentReadStream(Owner._zipPath, EntryName);
 
                     // In update mode, an entry's stream is writable and the entry can only be
-                    // opened once at a time, so return a read-only copy of its contents.
+                    // opened once at a time, and a stream the file system was opened from can't
+                    // be shared by parallel reads, so return a read-only copy of its contents.
                     using (var stream = GetZipEntry().Open())
                     {
                         var copy = new MemoryStream();
