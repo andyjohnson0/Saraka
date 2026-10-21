@@ -14,10 +14,10 @@ Saraka means "directory" or "index" in Swahili.
 
 | Package               | Target framework  | Version | Contents |
 |-----------------------|-------------------|---------|----------|
-| `Saraka.Abstractions` | .NET Standard 2.1 | 0.2.0   | The interfaces. |
-| `Saraka.SystemIO`     | .NET Standard 2.1 | 0.2.0   | An implementation backed by a local directory, using System.IO. |
-| `Saraka.Zip`          | .NET Standard 2.1 | 0.2.0   | An implementation backed by a zip file, using System.IO.Compression. |
-| `Saraka.AndroidSaf`   | .NET 10 for Android | 0.2.0   | A read-only implementation backed by an Android Storage Access Framework document tree. |
+| `Saraka.Abstractions` | .NET Standard 2.1 | 0.3.0   | The interfaces. |
+| `Saraka.SystemIO`     | .NET Standard 2.1 | 0.3.0   | An implementation backed by a local directory, using System.IO. |
+| `Saraka.Zip`          | .NET Standard 2.1 | 0.3.0   | An implementation backed by a zip file, using System.IO.Compression. |
+| `Saraka.AndroidSaf`   | .NET 10 for Android | 0.3.0   | A read-only implementation backed by an Android Storage Access Framework document tree. |
 
 `Saraka.AndroidSaf` needs Android 13 (API level 33) or later.
 
@@ -302,6 +302,10 @@ await using (var zip = await FileSystem.OpenAsync(@"C:\Photos\2026.zip", canWrit
   read-only and allows other readers.
 - Changes are kept in memory and written to the zip file when the file system is disposed. If it
   isn't disposed, the changes are lost.
+- `OpenAsync(stream, displayName)` opens a zip file that has no path, such as a document from an
+  Android content provider, read-only. The stream must be readable and seekable. The file system
+  owns it and disposes it, and disposes it straight away if opening fails. `DisplayName` is the
+  name passed in, and an empty root reports `DateTime.UnixEpoch` as its last-write time.
 - Opening something that isn't a zip file throws `InvalidDataException`.
 
 **How entries map to paths.** The entry `data/notes.txt` is the file `/data/notes.txt`.
@@ -338,9 +342,10 @@ await using (var zip = await FileSystem.OpenAsync(@"C:\Photos\2026.zip", canWrit
 - *Rename and move.* Zip has no rename, so these copy every affected entry to its new name and
   delete the original. That costs time in proportion to the size of the data.
 - *Streams.*
-  - **Read-only file system:** `OpenReadAsync` streams straight from the zip file, through its own
-    file handle.
-  - **Writable file system:** it returns a copy of the file's contents held in memory.
+  - **Read-only file system opened from a path:** `OpenReadAsync` streams straight from the zip
+    file, through its own file handle.
+  - **Writable file system, or one opened from a stream:** it returns a copy of the file's contents
+    held in memory.
   - Either way, read streams can be used in parallel and stay usable after the file system is
     disposed.
 - *Concurrent streams.* On a writable file system, while a file's write stream is open, anything
@@ -357,8 +362,8 @@ await using (var zip = await FileSystem.OpenAsync(@"C:\Photos\2026.zip", canWrit
   - On .NET 10 and later, disposal uses the archive's asynchronous `DisposeAsync`, so saving
     changes is asynchronous too.
   - Renaming or moving large files, and reading through `OpenReadAsync` on a writable file
-    system, can block the calling thread. To avoid that on a UI thread, call them through
-    `Task.Run`.
+    system or one opened from a stream, can block the calling thread. To avoid that on a UI
+    thread, call them through `Task.Run`.
 
 ## `Saraka.AndroidSaf`
 

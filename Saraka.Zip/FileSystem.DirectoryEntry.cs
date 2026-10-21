@@ -221,10 +221,7 @@ namespace Saraka.Zip
                 if (entry != null)
                     return FromZipTime(entry.LastWriteTime);
 
-                var contents = Owner.FindEntriesWithPrefix(DirectoryPrefix(EntryName));
-                return contents.Count == 0
-                    ? Owner._archiveLastWriteTimeUtc
-                    : contents.Max(e => FromZipTime(e.LastWriteTime));
+                return Owner.LatestTimeInside(EntryName) ?? Owner._archiveLastWriteTimeUtc;
             }
 
             /// <inheritdoc/>
@@ -259,6 +256,9 @@ namespace Saraka.Zip
             private List<IFileSystemEntry> ListChildren(
                 bool files, bool directories, Func<string, bool> match, CancellationToken cancellationToken)
             {
+                if (Owner._index != null)
+                    return ListIndexedChildren(Owner._index, files, directories, match, cancellationToken);
+
                 var prefix = DirectoryPrefix(EntryName);
                 var seen = new HashSet<string>(StringComparer.Ordinal);
                 var children = new List<IFileSystemEntry>();
@@ -280,6 +280,34 @@ namespace Saraka.Zip
 
                     var childPath = CombinePath(Path, childName);
                     children.Add(isDirectory
+                        ? (IFileSystemEntry)new DirectoryEntry(Owner, childPath)
+                        : new FileEntry(Owner, childPath));
+                }
+                return children;
+            }
+
+            /// <summary>
+            /// Lists the direct children of this directory from a read-only archive's index, with
+            /// the same results as searching the archive.
+            /// </summary>
+            /// <param name="index">The archive's index.</param>
+            /// <param name="files">True to include files.</param>
+            /// <param name="directories">True to include directories.</param>
+            /// <param name="match">Selects children by name.</param>
+            /// <param name="cancellationToken">A token to cancel the operation.</param>
+            /// <returns>The children.</returns>
+            private List<IFileSystemEntry> ListIndexedChildren(
+                ArchiveIndex index, bool files, bool directories, Func<string, bool> match, CancellationToken cancellationToken)
+            {
+                var children = new List<IFileSystemEntry>();
+                foreach (var child in index.GetChildren(EntryName))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if ((child.IsDirectory ? !directories : !files) || !match(child.Name))
+                        continue;
+
+                    var childPath = CombinePath(Path, child.Name);
+                    children.Add(child.IsDirectory
                         ? (IFileSystemEntry)new DirectoryEntry(Owner, childPath)
                         : new FileEntry(Owner, childPath));
                 }
