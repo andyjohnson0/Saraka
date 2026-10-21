@@ -4,7 +4,7 @@
     <TargetFramework>netstandard2.1</TargetFramework>
     <RootNamespace>Saraka.Zip</RootNamespace>
     <Nullable>enable</Nullable>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
     <Authors>Andrew Johnson</Authors>
     <Description>A Saraka file system backed by a zip file, using System.IO.Compression. It can read and update zip files, and saves changes when it is disposed.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

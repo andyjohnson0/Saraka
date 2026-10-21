@@ -4,7 +4,7 @@
     <TargetFramework>netstandard2.1</TargetFramework>
     <RootNamespace>Saraka.SystemIO</RootNamespace>
     <Nullable>enable</Nullable>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
     <Authors>Andrew Johnson</Authors>
     <Description>A Saraka file system backed by a directory on the local machine, using System.IO. The reference implementation of the Saraka.Abstractions interfaces.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
