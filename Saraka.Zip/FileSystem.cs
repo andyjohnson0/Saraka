@@ -60,6 +60,7 @@ namespace Saraka.Zip
         private readonly string? _zipPath;
         private readonly DateTime _archiveLastWriteTimeUtc;
         private readonly DirectoryEntry _root;
+        private readonly ArchiveIndex? _index;
         private volatile bool _disposed;
 
         /// <summary>
@@ -80,6 +81,10 @@ namespace Saraka.Zip
             _archiveLastWriteTimeUtc = archiveLastWriteTimeUtc;
             CanWrite = canWrite;
             _root = new DirectoryEntry(this, RootPath);
+
+            // A read-only archive never changes, so index it once. A writable one is searched each
+            // time, because its entries change.
+            _index = canWrite ? null : new ArchiveIndex(archive.Entries);
         }
 
         /// <summary>
@@ -419,6 +424,8 @@ namespace Saraka.Zip
         /// <returns>The first entry with that exact name, or null if there is none.</returns>
         private ZipArchiveEntry? FindFileEntry(string name)
         {
+            if (_index != null)
+                return _index.FindFile(name);
             return _archive.Entries.FirstOrDefault(e => string.Equals(e.FullName, name, StringComparison.Ordinal));
         }
 
@@ -431,6 +438,8 @@ namespace Saraka.Zip
         {
             if (name.Length == 0)
                 return null;
+            if (_index != null)
+                return _index.FindDirectoryEntry(name);
             var entryName = name + Separator;
             return _archive.Entries.FirstOrDefault(e => string.Equals(e.FullName, entryName, StringComparison.Ordinal));
         }
@@ -464,8 +473,23 @@ namespace Saraka.Zip
         {
             if (name.Length == 0)
                 return true;
+            if (_index != null)
+                return _index.DirectoryExists(name);
             var prefix = name + Separator;
             return _archive.Entries.Any(e => e.FullName.StartsWith(prefix, StringComparison.Ordinal));
+        }
+
+        /// <summary>
+        /// Gets the latest last-write time of the entries inside a directory.
+        /// </summary>
+        /// <param name="name">The directory's zip entry name, without a trailing "/", or "" for the root.</param>
+        /// <returns>The latest time, in UTC, or null if no entry is inside the directory.</returns>
+        private DateTime? LatestTimeInside(string name)
+        {
+            if (_index != null)
+                return _index.LatestTimeInside(name);
+            var contents = FindEntriesWithPrefix(DirectoryPrefix(name));
+            return contents.Count == 0 ? (DateTime?)null : contents.Max(e => FromZipTime(e.LastWriteTime));
         }
 
         /// <summary>
